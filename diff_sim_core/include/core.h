@@ -10,6 +10,8 @@ class Tensor {
     friend class SGD;
     friend class Adam;
     friend class AdamW;
+    friend Tensor relu(const Tensor& input);
+    friend Tensor tanh(const Tensor& input);
 public:
     // Constructor for arbitrary 2D shape (rows, cols)
     Tensor(int rows, int cols, bool requires_grad = false);
@@ -52,13 +54,29 @@ public:
     float* data_ptr();
 
     Tensor sum();
+    Tensor sum(int axis); // Axis reduction
     Tensor mean();
+    Tensor mean(int axis); // Axis reduction
     Tensor max();
     Tensor min();
+    
+    // Element-wise Math
+    Tensor exp();
+    Tensor log();
+    Tensor sqrt();
+    Tensor abs();
+    Tensor clamp(float min_val, float max_val);
 
     // Trigonometry
     Tensor sin();
     Tensor cos();
+    Tensor pow(float exponent);
+
+    // Core Ops
+    Tensor select(int idx); // Differentiable indexing
+    static Tensor stack(const std::vector<Tensor*>& tensors); // Differentiable stacking
+    static Tensor cat(const std::vector<Tensor*>& tensors, int dim); // Differentiable concatenation
+    Tensor reshape(int r, int c);
 
     // Operations
     Tensor operator+(const Tensor& other);
@@ -66,6 +84,12 @@ public:
     Tensor operator*(const Tensor& other);
     Tensor operator*(float scalar);
     Tensor operator/(const Tensor& other);
+
+    //Mathematical functions
+
+    Tensor transpose();
+    Tensor matmul(const Tensor& other);
+    
     
 
 private:

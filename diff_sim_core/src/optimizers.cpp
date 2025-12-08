@@ -95,3 +95,6 @@ void AdamW::step() {
         p->data.array() -= learning_rate * m_hat.array() / (v_hat.array().sqrt() + epsilon);
     }
 }
+
+// ---------------- RMSProp ----------------
+

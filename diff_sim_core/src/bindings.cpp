@@ -3,6 +3,7 @@
 #include <pybind11/eigen.h>
 #include <iostream>
 #include "core.h"
+#include "activations.h"
 #include "optimizers.h"
 
 namespace py = pybind11;
@@ -40,10 +41,12 @@ PYBIND11_MODULE(forgeNN_cpp, m) {
         .def_property("data", &Tensor::get_data, &Tensor::set_data)
         .def_property("grad", &Tensor::get_grad, &Tensor::set_grad)
 
-        .def("sum", &Tensor::sum, py::keep_alive<0, 1>())
-        .def("mean", &Tensor::mean, py::keep_alive<0, 1>())
+
         .def("sin", &Tensor::sin, py::keep_alive<0, 1>())
         .def("cos", &Tensor::cos, py::keep_alive<0, 1>())
+        .def("select", &Tensor::select, py::keep_alive<0, 1>())
+        .def("__getitem__", &Tensor::select, py::keep_alive<0, 1>()) // Enable t[i] syntax
+        .def_static("stack", &Tensor::stack) // Static method
 
         // 4. Operators (with keep_alive to manage graph lifetime)
         // Keep 'this' (1) and 'other' (2) alive as long as 'result' (0) is alive
@@ -52,7 +55,37 @@ PYBIND11_MODULE(forgeNN_cpp, m) {
         .def("__mul__", (Tensor (Tensor::*)(const Tensor&)) &Tensor::operator*, py::keep_alive<0, 1>(), py::keep_alive<0, 2>())
         .def("__mul__", (Tensor (Tensor::*)(float)) &Tensor::operator*, py::keep_alive<0, 1>())
         .def("__rmul__", (Tensor (Tensor::*)(float)) &Tensor::operator*, py::keep_alive<0, 1>())
-        .def("__truediv__", &Tensor::operator/, py::keep_alive<0, 1>(), py::keep_alive<0, 2>());
+        .def("__truediv__", &Tensor::operator/, py::keep_alive<0, 1>(), py::keep_alive<0, 2>())
+
+
+        // Reductions
+        .def("sum", (Tensor (Tensor::*)()) &Tensor::sum)
+        .def("sum", (Tensor (Tensor::*)(int)) &Tensor::sum)
+        .def("mean", (Tensor (Tensor::*)()) &Tensor::mean)
+        .def("mean", (Tensor (Tensor::*)(int)) &Tensor::mean)
+        .def("min", &Tensor::min)
+        .def("max", &Tensor::max)
+
+        // Math
+        .def("exp", &Tensor::exp)
+        .def("log", &Tensor::log)
+        .def("sqrt", &Tensor::sqrt)
+        .def("abs", &Tensor::abs)
+        .def("clamp", &Tensor::clamp)
+        
+        .def("transpose", &Tensor::transpose)
+        .def("matmul", &Tensor::matmul, py::keep_alive<0, 1>(), py::keep_alive<0, 2>())
+        .def("__matmul__", &Tensor::matmul, py::keep_alive<0, 1>(), py::keep_alive<0, 2>())
+        
+        // New Features
+        .def("pow", &Tensor::pow, py::keep_alive<0, 1>())
+        .def("__pow__", &Tensor::pow, py::keep_alive<0, 1>())
+        .def("reshape", &Tensor::reshape, py::keep_alive<0, 1>())
+        .def_static("cat", &Tensor::cat);
+
+    // Module-level Activations
+    m.def("relu", &relu, py::keep_alive<0, 1>());
+    m.def("tanh", (Tensor (*)(const Tensor&)) &tanh, py::keep_alive<0, 1>());
 
     py::class_<SGD>(m, "SGD")
         .def(py::init<std::vector<Tensor*>, float>(), py::arg("params"), py::arg("lr"))

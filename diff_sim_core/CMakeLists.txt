@@ -24,11 +24,14 @@ find_package(Eigen3 3.3 REQUIRED NO_MODULE)
 
 # 4. Define the Module "forgeNN_cpp"
 # We only have one source file for now.
-pybind11_add_module(forgeNN_cpp
+# C++ Source Files
+set(SOURCES
     src/bindings.cpp
     src/core.cpp
+    src/activations.cpp
     src/optimizers.cpp
 )
+pybind11_add_module(forgeNN_cpp ${SOURCES})
 
 # Link Eigen
 target_link_libraries(forgeNN_cpp PRIVATE Eigen3::Eigen)
