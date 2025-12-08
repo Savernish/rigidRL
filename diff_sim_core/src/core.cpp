@@ -60,29 +60,48 @@ void Tensor::backward() {
     }
     grad.setOnes();
 
-    // Topological Sort
+    // Iterative Topological Sort to avoid Stack Overflow
     std::vector<Tensor*> topo;
     std::unordered_set<Tensor*> visited;
+    std::vector<Tensor*> stack;
     
-    std::function<void(Tensor*)> recurse = [&](Tensor* node) {
-        if (visited.find(node) == visited.end()) {
-            visited.insert(node);
-            for (Tensor* child : node->children) {
-                recurse(child);
-            }
-            topo.push_back(node);
+    std::unordered_set<Tensor*> expanded;
+    stack.push_back(this);
+    
+    while (!stack.empty()) {
+        Tensor* node = stack.back();
+        
+        if (visited.count(node)) {
+            stack.pop_back();
+            continue;
         }
-    };
-    recurse(this);
+        
+        if (expanded.count(node)) {
+            visited.insert(node);
+            topo.push_back(node);
+            stack.pop_back();
+        } else {
+            expanded.insert(node);
+            for (Tensor* child : node->children) {
+                if (visited.find(child) == visited.end()) {
+                    stack.push_back(child);
+                }
+            }
+        }
+    }
+    
 
     // Backward Pass
+    int count = 0;
     for (auto it = topo.rbegin(); it != topo.rend(); ++it) {
         Tensor* node = *it;
         if (node->backward_fn) {
+             // count++;
             node->backward_fn(*node);
         }
     }
-}
+} // Backward Pass
+
 
 int Tensor::rows() const { return data.rows(); }
 int Tensor::cols() const { return data.cols(); }

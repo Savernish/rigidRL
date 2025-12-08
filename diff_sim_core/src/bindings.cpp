@@ -46,7 +46,7 @@ PYBIND11_MODULE(forgeNN_cpp, m) {
         .def("cos", &Tensor::cos, py::keep_alive<0, 1>())
         .def("select", &Tensor::select, py::keep_alive<0, 1>())
         .def("__getitem__", &Tensor::select, py::keep_alive<0, 1>()) // Enable t[i] syntax
-        .def_static("stack", &Tensor::stack) // Static method
+        .def_static("stack", &Tensor::stack, py::keep_alive<0, 1>()) // Static method
 
         // 4. Operators (with keep_alive to manage graph lifetime)
         // Keep 'this' (1) and 'other' (2) alive as long as 'result' (0) is alive
@@ -59,21 +59,21 @@ PYBIND11_MODULE(forgeNN_cpp, m) {
 
 
         // Reductions
-        .def("sum", (Tensor (Tensor::*)()) &Tensor::sum)
-        .def("sum", (Tensor (Tensor::*)(int)) &Tensor::sum)
-        .def("mean", (Tensor (Tensor::*)()) &Tensor::mean)
-        .def("mean", (Tensor (Tensor::*)(int)) &Tensor::mean)
-        .def("min", &Tensor::min)
-        .def("max", &Tensor::max)
+        .def("sum", (Tensor (Tensor::*)()) &Tensor::sum, py::keep_alive<0, 1>())
+        .def("sum", (Tensor (Tensor::*)(int)) &Tensor::sum, py::keep_alive<0, 1>())
+        .def("mean", (Tensor (Tensor::*)()) &Tensor::mean, py::keep_alive<0, 1>())
+        .def("mean", (Tensor (Tensor::*)(int)) &Tensor::mean, py::keep_alive<0, 1>())
+        .def("min", &Tensor::min, py::keep_alive<0, 1>())
+        .def("max", &Tensor::max, py::keep_alive<0, 1>())
 
         // Math
-        .def("exp", &Tensor::exp)
-        .def("log", &Tensor::log)
-        .def("sqrt", &Tensor::sqrt)
-        .def("abs", &Tensor::abs)
-        .def("clamp", &Tensor::clamp)
+        .def("exp", &Tensor::exp, py::keep_alive<0, 1>())
+        .def("log", &Tensor::log, py::keep_alive<0, 1>())
+        .def("sqrt", &Tensor::sqrt, py::keep_alive<0, 1>())
+        .def("abs", &Tensor::abs, py::keep_alive<0, 1>())
+        .def("clamp", &Tensor::clamp, py::keep_alive<0, 1>())
         
-        .def("transpose", &Tensor::transpose)
+        .def("transpose", &Tensor::transpose, py::keep_alive<0, 1>())
         .def("matmul", &Tensor::matmul, py::keep_alive<0, 1>(), py::keep_alive<0, 2>())
         .def("__matmul__", &Tensor::matmul, py::keep_alive<0, 1>(), py::keep_alive<0, 2>())
         
@@ -81,7 +81,7 @@ PYBIND11_MODULE(forgeNN_cpp, m) {
         .def("pow", &Tensor::pow, py::keep_alive<0, 1>())
         .def("__pow__", &Tensor::pow, py::keep_alive<0, 1>())
         .def("reshape", &Tensor::reshape, py::keep_alive<0, 1>())
-        .def_static("cat", &Tensor::cat);
+        .def_static("cat", &Tensor::cat, py::keep_alive<0, 1>());
 
     // Module-level Activations
     m.def("relu", &relu, py::keep_alive<0, 1>());
