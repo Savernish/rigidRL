@@ -306,7 +306,7 @@ Tensor Tensor::mean() {
     return result;
 }
 
-Tensor Tensor::select(int idx) {
+Tensor Tensor::select(int idx) const {
     Tensor result(1, 1, false);
     // Boundary check? For performance we skip, but for safety:
     if (idx < 0 || idx >= data.size()) {
@@ -318,13 +318,14 @@ Tensor Tensor::select(int idx) {
     if (this->requires_grad) {
         result.set_requires_grad(true);
         result.grad.setZero();
-        result.children.push_back(this);
+        result.children.push_back(const_cast<Tensor*>(this));
         
         // Capture 'idx' and 'this'
-        result.backward_fn = [this, idx](Tensor& self) {
-            if (this->requires_grad) {
+        Tensor* self_ptr = const_cast<Tensor*>(this);
+        result.backward_fn = [self_ptr, idx](Tensor& self) {
+            if (self_ptr->requires_grad) {
                 // Accumulate gradient into the specific index
-                this->grad(idx) += self.grad(0,0);
+                self_ptr->grad(idx) += self.grad(0,0);
             }
         };
     }
@@ -351,11 +352,6 @@ Tensor Tensor::stack(const std::vector<Tensor*>& tensors) {
                 result.children.push_back(tensors[i]);
             }
         }
-        
-        // We need to know WHICH child corresponds to WHICH index.
-        // But 'children' vector order matches 'tensors' order ONLY if all require grad.
-        // Better approach: Capture the vector of pointers in the closure.
-        // We trust the pointers remain valid (Python keeps them alive).
         
         std::vector<Tensor*> inputs = tensors; // Copy vector of pointers
         
@@ -685,7 +681,7 @@ Tensor Tensor::clamp(float min_val, float max_val) {
 Tensor Tensor::reshape(int r, int c) {
     if (r * c != this->data.size()) {
          std::cerr << "Error: Reshape size mismatch. Total " << this->data.size() << " requested " << r << "x" << c << std::endl;
-         return Tensor(1,1); // Error
+         return Tensor(1,1);
     }
     
     Tensor result(r, c, false);

@@ -3,7 +3,7 @@
 #include <cmath>
 
 Body::Body(float x, float y, float mass_val, float width, float height) 
-    : name("Body") 
+    : name("Body"), is_static(false), friction(0.5f), restitution(0.0f)  // No bounce by default
 {
     // Initialize State (requires_grad=false by default for state, but can be turned on)
     std::vector<float> pos_vec = {x, y};
@@ -38,6 +38,23 @@ Body::Body(float x, float y, float mass_val, float width, float height)
 
     // Initialize accumulators
     reset_forces();
+}
+
+// Factory for static colliders (ground, walls, platforms)
+Body* Body::create_static(float x, float y, float width, float height, float rotation_val) {
+    // Use mass=1 internally but mark as static  
+    Body* b = new Body(x, y, 1.0f, width, height);
+    b->is_static = true;
+    b->friction = 0.8f;  // Static objects typically have higher friction
+    b->restitution = 0.0f;  // No bounce for ground
+    
+    // Set rotation if specified
+    if (rotation_val != 0.0f) {
+        std::vector<float> rot_vec = {rotation_val};
+        b->rotation = Tensor(rot_vec, false);
+    }
+    
+    return b;
 }
 
 void Body::step(const Tensor& forces, const Tensor& torque, float dt) {
@@ -85,21 +102,14 @@ void Body::apply_force_at_point(const Tensor& force, const Tensor& point) {
     // r = point - pos
     // Note: 'point' should be world coordinates.
 
-    // We need to access components.
-    // Ensure we keep intermediates alive.
-    // Ideally, 'force' and 'point' come from Graph, so they are safe.
-    
-    Tensor px = const_cast<Tensor&>(pos).select(0); 
-    Tensor py = const_cast<Tensor&>(pos).select(1);
-    // Add to GC to be safe if they aren't already
+    // Access components (select is now const-qualified)
+    Tensor px = pos.select(0); 
+    Tensor py = pos.select(1);
     garbage_collector.push_back(px);
     garbage_collector.push_back(py);
 
-    Tensor p_x = point.get(0,0) == point.get(0,0) ? const_cast<Tensor&>(point).select(0) : point; 
-    // Actually, point is expected to be (2, 1) or (2, 0). 
-    // Let's assume point is (2,1).
-    p_x = const_cast<Tensor&>(point).select(0);
-    Tensor p_y = const_cast<Tensor&>(point).select(1);
+    Tensor p_x = point.select(0);
+    Tensor p_y = point.select(1);
     garbage_collector.push_back(p_x);
     garbage_collector.push_back(p_y);
 
@@ -108,8 +118,8 @@ void Body::apply_force_at_point(const Tensor& force, const Tensor& point) {
     garbage_collector.push_back(dx);
     garbage_collector.push_back(dy);
 
-    Tensor fx = const_cast<Tensor&>(force).select(0);
-    Tensor fy = const_cast<Tensor&>(force).select(1);
+    Tensor fx = force.select(0);
+    Tensor fy = force.select(1);
     garbage_collector.push_back(fx);
     garbage_collector.push_back(fy);
 
@@ -175,8 +185,8 @@ std::vector<Tensor> Body::get_corners() {
     garbage_collector.push_back(cos_t);
     garbage_collector.push_back(sin_t);
 
-    Tensor px = const_cast<Tensor&>(pos).select(0);
-    Tensor py = const_cast<Tensor&>(pos).select(1);
+    Tensor px = pos.select(0);
+    Tensor py = pos.select(1);
     garbage_collector.push_back(px);
     garbage_collector.push_back(py);
 

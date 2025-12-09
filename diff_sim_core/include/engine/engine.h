@@ -6,50 +6,49 @@
 #include "engine/body.h"
 #include "engine/tensor.h"
 
-// Ground Segment for arbitrary terrain
-struct GroundSegment {
-    float x1, y1;
-    float x2, y2;
-    float nx, ny; // Normal vector (normalized)
-    float k;
-    float damping;
-    float friction; // Friction coefficient
-    
-    // AABB for Optimization
-    float min_x, max_x, min_y, max_y;
-};
-
 class Engine {
     Renderer* renderer;
-    std::vector<Body*> bodies;
-    std::vector<GroundSegment> static_geometry;
+    std::vector<Body*> bodies;       // Dynamic bodies
+    std::vector<Body*> colliders;    // Static colliders (ground, walls, etc.)
+    
     float dt;
-    int substeps; // Number of physics steps per frame
-    Tensor gravity;
-    bool paused;
+    int substeps;
+    float gravity_x;
+    float gravity_y;
 
 public:
-    Engine(int width, int height, float scale=50.0f, float dt=0.016f, int substeps=10);
+    Engine(int width = 800, int height = 600, float scale = 50.0f, 
+           float dt = 0.016f, int substeps = 10);
     ~Engine();
-
+    
+    // Body management
     void add_body(Body* b);
+    
+    // Static geometry (ground, walls, platforms)
+    Body* add_collider(float x, float y, float width, float height, float rotation = 0.0f);
+    void clear_colliders();
+    
+    // Environment
     void set_gravity(float x, float y);
     
-    // Static Geometry
-    // k=20000, damping=100 hardcoded internally for stability
-    void add_ground_segment(float x1, float y1, float x2, float y2, float friction=0.5f);
-    void clear_geometry();
+    // Simulation
+    void update();          // Physics step only
+    void render_bodies();   // Render all bodies + colliders
+    bool step();            // Full frame: events + physics + render
     
-    // Fine-grained control
-    void update();
-    void render_bodies();
-
-    // Simulation Loop (Wrapper)
-    // Returns false if Quit event received
-    bool step(); 
-
-    // Accessor for Python visualization
+    // Accessor
     Renderer* get_renderer() { return renderer; }
+
+private:
+    // Physics helpers
+    void apply_gravity(Body* b, float sub_dt);
+    void integrate(Body* b, float sub_dt);
+    
+    // Impulse-based collision
+    void resolve_collision(Body* a, Body* b);
+    bool detect_box_box(Body* a, const Shape& sa, Body* b, const Shape& sb,
+                        float& pen_depth, float& nx, float& ny, float& cx, float& cy);
+    void apply_impulse(Body* a, Body* b, float nx, float ny, float cx, float cy);
 };
 
 #endif // ENGINE_H

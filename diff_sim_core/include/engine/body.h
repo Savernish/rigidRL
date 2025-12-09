@@ -42,8 +42,16 @@ public:
     // Geometry (Static for now)
     std::vector<Shape> shapes;
     std::string name;
+    
+    // Physics properties
+    bool is_static;     // Static bodies don't move (infinite mass for collision)
+    float friction;     // Friction coefficient [0, 1]
+    float restitution;  // Bounciness [0 = no bounce, 1 = full bounce]
 
     Body(float x, float y, float mass_val, float width, float height);
+    
+    // Static body factory (for ground/walls)
+    static Body* create_static(float x, float y, float width, float height, float rotation = 0.0f);
     
     // Physics integration step
     // Old method (Manual):

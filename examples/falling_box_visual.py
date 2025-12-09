@@ -1,68 +1,62 @@
+"""
+Simple Physics Test
+"""
+import sys
+import os
+
+# Add diff_sim_core to path for module and DLL loading
+script_dir = os.path.dirname(os.path.abspath(__file__))
+core_dir = os.path.join(os.path.dirname(script_dir), 'diff_sim_core')
+os.add_dll_directory(core_dir)  # For Windows DLL loading
+sys.path.insert(0, core_dir)
+
 import forgeNN_cpp as fnn
 import time
 
-width = 1600
-height = 900
-scale = 100
-
 def run():
-    print("Initializing Engine (and Window)...")
-    # Engine creates the window internally
-    engine = fnn.Engine(width, height, scale, 0.016, 10) # 10 substeps
-    
-    print("Initializing Body...")
-    # Body (x, y, w, h, mass)
-    # Spawn HIGHER (y=8.0) to avoid spawning inside the peak (y=6.0)
-    # Slight offset (x=0.1) to ensure it picks a side
-    box = fnn.Body(-3, 7.0, 1.0, 1.0, 1.0) 
-    engine.add_body(box)
-    engine.set_gravity(7.81, -9.81)
-    
-    # Get the renderer from the engine for manual drawing
+    print("=== Simple Physics Test ===")
+    engine = fnn.Engine(1200, 800, 80, 0.016, 10)
     renderer = engine.get_renderer()
+    engine.set_gravity(0, -9.81)
     
-    print("Adding Ground Segments...")
-    # 1. The "Inverted V" (Splitter/Peak) on top
-    # Left face of peak
-    engine.add_ground_segment(-4, 2, 0, 6, 0.1) # Icy Peak
-    # Right face of peak
-    #engine.add_ground_segment(0, 6, 4, 2, 0.1)  # Icy Peak
+    # Create boxes (avoid landing on segment endpoints)
+    box1 = fnn.Body(0, 6, 1.0, 1.0, 1.0)
+    box2 = fnn.Body(-2, 8, 1.5, 0.8, 0.8)
+    box3 = fnn.Body(5, 10, 0.5, 1.2, 1.2)  # At x=5, lands between peak segments
+    engine.add_body(box1)
+    engine.add_body(box2)
+    engine.add_body(box3)
     
-    # 2. Flat Bottom (Ground)
-    # Sticky Floor
-    engine.add_ground_segment(-20, 0, 20, 0, 1.0)
+    # Ground
+    engine.add_ground_segment(-10, 0, 10, 0, 0.8)
     
-    # Get the renderer from the engine for manual drawing
-    renderer = engine.get_renderer()
+    # V-shaped valley
+    engine.add_ground_segment(-6, 4, -2, 1, 0.5)
+    engine.add_ground_segment(-2, 1, 2, 4, 0.5)
     
-    print("Starting Loop...")
-    running = True
-    while running:
+    # Peak
+    engine.add_ground_segment(4, 0, 6, 3, 0.5)
+    engine.add_ground_segment(6, 3, 8, 0, 0.5)
+    
+    print("Press ESC or close window to exit")
+    
+    while True:
         if not renderer.process_events():
             break
             
-        # 2. Physics
         engine.update()
-        
-        # 3. Rendering
         renderer.clear()
         
-        # Draw Peak
-        renderer.draw_line(-4, 2, 0, 6, 0.0, 1.0, 1.0) # Cyan
-        renderer.draw_line(0, 6, 4, 2, 0.0, 1.0, 1.0)
+        # Draw terrain
+        renderer.draw_line(-10, 0, 10, 0, 0.0, 1.0, 0.0)  # Floor
+        renderer.draw_line(-6, 4, -2, 1, 0.3, 0.3, 1.0)   # V left
+        renderer.draw_line(-2, 1, 2, 4, 0.3, 0.3, 1.0)    # V right
+        renderer.draw_line(4, 0, 6, 3, 1.0, 1.0, 0.0)     # Peak left
+        renderer.draw_line(6, 3, 8, 0, 1.0, 1.0, 0.0)     # Peak right
         
-        # Draw Floor
-        renderer.draw_line(-20, 0, 20, 0, 0.0, 1.0, 0.0) # Green
-        
-        # Render Simulation Objects
         engine.render_bodies()
-        
-        # Present
         renderer.present()
-        
         time.sleep(0.016)
-
-    print("Engine Loop Finished.")
 
 if __name__ == "__main__":
     run()

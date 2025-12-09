@@ -1,302 +1,467 @@
 #include "engine/engine.h"
 #include "renderer/sdl_renderer.h"
-#include "engine/activations.h"
-#include <iostream>
 #include <cmath>
+#include <limits>
 #include <algorithm>
+#include <iostream>
 
-Engine::Engine(int width, int height, float scale, float dt_val, int substeps_val) 
-    : renderer(nullptr), dt(dt_val), substeps(substeps_val), paused(false) 
+// ============================================================================
+// Constructor / Destructor
+// ============================================================================
+
+Engine::Engine(int width, int height, float scale, float dt_val, int substeps_val)
+    : renderer(nullptr), dt(dt_val), substeps(substeps_val),
+      gravity_x(0.0f), gravity_y(-9.81f)
 {
-    // Default gravity (0, -9.81)
-    std::vector<float> grav_vec = {0.0f, -9.81f};
-    gravity = Tensor(grav_vec, false);
-
     renderer = new SDLRenderer(width, height, scale);
 }
 
 Engine::~Engine() {
-    if (renderer) {
-        delete renderer;
+    delete renderer;
+    // Clean up colliders (engine owns them)
+    for (Body* c : colliders) {
+        delete c;
     }
-    // We do not delete bodies as they are owned by Python/External
 }
+
+// ============================================================================
+// Body and Collider Management
+// ============================================================================
 
 void Engine::add_body(Body* b) {
     bodies.push_back(b);
 }
 
-void Engine::set_gravity(float x, float y) {
-    std::vector<float> grav_vec = {x, y};
-    gravity = Tensor(grav_vec, false);
+Body* Engine::add_collider(float x, float y, float width, float height, float rotation) {
+    Body* c = Body::create_static(x, y, width, height, rotation);
+    colliders.push_back(c);
+    return c;
 }
 
-bool Engine::step() {
-    // 1. Process Events
-    if (!renderer->process_events()) {
-        return false;
+void Engine::clear_colliders() {
+    for (Body* c : colliders) {
+        delete c;
     }
+    colliders.clear();
+}
 
-    // 2. Physics
-    update();
+void Engine::set_gravity(float x, float y) {
+    gravity_x = x;
+    gravity_y = y;
+}
 
-    // 3. Render
-    renderer->clear();
-    // Draw Ground Line due to Engine knowledge (y=0) -> Visual only, segments drawn manually in python now ideally
-    // But keeping it just in case won't hurt, though we rely on render_bodies usually.
-    // renderer->draw_line(-1000.0f, 0.0f, 1000.0f, 0.0f, 0.0f, 1.0f, 0.0f); // Wide Green Line
+// ============================================================================
+// Physics Helpers
+// ============================================================================
 
-    render_bodies();
+void Engine::apply_gravity(Body* b, float sub_dt) {
+    if (b->is_static) return;
+    float m = b->mass.get(0, 0);
+    std::vector<float> grav = {gravity_x * m, gravity_y * m};
+    Tensor force_gravity(grav, false);
+    b->apply_force(force_gravity);
+}
+
+void Engine::integrate(Body* b, float sub_dt) {
+    if (b->is_static) return;
+    b->step(sub_dt);
+}
+
+// ============================================================================
+// Collision Detection: Box vs Box (SAT-based)
+// ============================================================================
+
+bool Engine::detect_box_box(Body* a, const Shape& sa, Body* b, const Shape& sb,
+                            float& pen_depth, float& nx, float& ny, float& cx, float& cy) {
+    // Get transforms
+    float ax = a->pos.get(0, 0), ay = a->pos.get(1, 0);
+    float bx = b->pos.get(0, 0), by = b->pos.get(1, 0);
+    float a_rot = a->rotation.get(0, 0);
+    float b_rot = b->rotation.get(0, 0);
     
-    renderer->present();
-
+    float cos_a = std::cos(a_rot), sin_a = std::sin(a_rot);
+    float cos_b = std::cos(b_rot), sin_b = std::sin(b_rot);
+    
+    float hw_a = sa.width / 2.0f, hh_a = sa.height / 2.0f;
+    float hw_b = sb.width / 2.0f, hh_b = sb.height / 2.0f;
+    
+    // Get corners of A in world space
+    float corners_a[4][2];
+    float local_a[4][2] = {{-hw_a, -hh_a}, {hw_a, -hh_a}, {hw_a, hh_a}, {-hw_a, hh_a}};
+    for (int i = 0; i < 4; i++) {
+        corners_a[i][0] = ax + cos_a * local_a[i][0] - sin_a * local_a[i][1];
+        corners_a[i][1] = ay + sin_a * local_a[i][0] + cos_a * local_a[i][1];
+    }
+    
+    // Get corners of B in world space
+    float corners_b[4][2];
+    float local_b[4][2] = {{-hw_b, -hh_b}, {hw_b, -hh_b}, {hw_b, hh_b}, {-hw_b, hh_b}};
+    for (int i = 0; i < 4; i++) {
+        corners_b[i][0] = bx + cos_b * local_b[i][0] - sin_b * local_b[i][1];
+        corners_b[i][1] = by + sin_b * local_b[i][0] + cos_b * local_b[i][1];
+    }
+    
+    // SAT: check 4 axes (2 per box)
+    float axes[4][2] = {
+        {cos_a, sin_a}, {-sin_a, cos_a},  // A's axes
+        {cos_b, sin_b}, {-sin_b, cos_b}   // B's axes
+    };
+    
+    pen_depth = std::numeric_limits<float>::infinity();
+    
+    for (int i = 0; i < 4; i++) {
+        float axis_x = axes[i][0], axis_y = axes[i][1];
+        
+        // Project all corners onto axis
+        float min_a = std::numeric_limits<float>::infinity();
+        float max_a = -std::numeric_limits<float>::infinity();
+        for (int j = 0; j < 4; j++) {
+            float proj = corners_a[j][0] * axis_x + corners_a[j][1] * axis_y;
+            min_a = std::min(min_a, proj);
+            max_a = std::max(max_a, proj);
+        }
+        
+        float min_b = std::numeric_limits<float>::infinity();
+        float max_b = -std::numeric_limits<float>::infinity();
+        for (int j = 0; j < 4; j++) {
+            float proj = corners_b[j][0] * axis_x + corners_b[j][1] * axis_y;
+            min_b = std::min(min_b, proj);
+            max_b = std::max(max_b, proj);
+        }
+        
+        // Check for separation
+        if (max_a < min_b || max_b < min_a) {
+            return false;  // Separating axis found, no collision
+        }
+        
+        // Calculate overlap
+        float overlap = std::min(max_a, max_b) - std::max(min_a, min_b);
+        
+        // No axis debug
+        
+        if (overlap < pen_depth) {
+            pen_depth = overlap;
+            nx = axis_x;
+            ny = axis_y;
+            
+            // Ensure normal points from B to A (standard impulse convention)
+            // This way impulse pushes A away from B
+            float dx = ax - bx;
+            float dy = ay - by;
+            if (dx * nx + dy * ny < 0) {
+                nx = -nx;
+                ny = -ny;
+            }
+        }
+    }
+    // Find contact point: deepest penetrating corner
+    // Check corners of A against B
+    float best_depth = -std::numeric_limits<float>::infinity();
+    cx = (ax + bx) / 2.0f;  // Default fallback
+    cy = (ay + by) / 2.0f;
+    
+    for (int i = 0; i < 4; i++) {
+        // Transform A's corner to B's local space
+        float px = corners_a[i][0];
+        float py = corners_a[i][1];
+        float dx = px - bx;
+        float dy = py - by;
+        float lx = cos_b * dx + sin_b * dy;
+        float ly = -sin_b * dx + cos_b * dy;
+        
+        // Check if inside B
+        float pen_x = hw_b - std::abs(lx);
+        float pen_y = hh_b - std::abs(ly);
+        
+        if (pen_x > 0 && pen_y > 0) {
+            float depth = std::min(pen_x, pen_y);
+            if (depth > best_depth) {
+                best_depth = depth;
+                cx = px;
+                cy = py;
+            }
+        }
+    }
+    
+    // Also check corners of B against A
+    for (int i = 0; i < 4; i++) {
+        float px = corners_b[i][0];
+        float py = corners_b[i][1];
+        float dx = px - ax;
+        float dy = py - ay;
+        float lx = cos_a * dx + sin_a * dy;
+        float ly = -sin_a * dx + cos_a * dy;
+        
+        float pen_x = hw_a - std::abs(lx);
+        float pen_y = hh_a - std::abs(ly);
+        
+        if (pen_x > 0 && pen_y > 0) {
+            float depth = std::min(pen_x, pen_y);
+            if (depth > best_depth) {
+                best_depth = depth;
+                cx = px;
+                cy = py;
+            }
+        }
+    }
+    
     return true;
 }
 
-// Helper for AABB overlap
-bool aabb_overlap(float min_x1, float max_x1, float min_y1, float max_y1, 
-                  float min_x2, float max_x2, float min_y2, float max_y2) {
-    return (min_x1 <= max_x2 && max_x1 >= min_x2 &&
-            min_y1 <= max_y2 && max_y1 >= min_y2);
-}
+// ============================================================================
+// Collision Response: Impulse-based
+// ============================================================================
 
-void Engine::add_ground_segment(float x1, float y1, float x2, float y2, float friction) {
-    GroundSegment s;
-    s.x1 = x1; s.y1 = y1;
-    s.x2 = x2; s.y2 = y2;
-    s.k = 20000.0f; // Hardcoded High Stiffness
-    s.damping = 100.0f; // Hardcoded Stable Damping
-    s.friction = friction;
+void Engine::apply_impulse(Body* a, Body* b, float nx, float ny, float px, float py) {
+    // Mass and inertia
+    float m_a = a->is_static ? 1e10f : a->mass.get(0, 0);
+    float m_b = b->is_static ? 1e10f : b->mass.get(0, 0);
+    float I_a = a->is_static ? 1e10f : a->inertia.get(0, 0);
+    float I_b = b->is_static ? 1e10f : b->inertia.get(0, 0);
     
-    // Calculate Normal (Standard: Left Normal)
-    float dx = x2 - x1;
-    float dy = y2 - y1;
-    float len = std::sqrt(dx*dx + dy*dy);
-    if (len > 0) {
-        s.nx = -dy / len;
-        s.ny = dx / len;
-    } else {
-        s.nx = 0; s.ny = 1;
+    float inv_m_a = a->is_static ? 0.0f : 1.0f / m_a;
+    float inv_m_b = b->is_static ? 0.0f : 1.0f / m_b;
+    float inv_I_a = a->is_static ? 0.0f : 1.0f / I_a;
+    float inv_I_b = b->is_static ? 0.0f : 1.0f / I_b;
+    
+    // Positions
+    float ax = a->pos.get(0, 0), ay = a->pos.get(1, 0);
+    float bx = b->pos.get(0, 0), by = b->pos.get(1, 0);
+    
+    // Vectors from centers to contact point
+    float ra_x = px - ax, ra_y = py - ay;
+    float rb_x = px - bx, rb_y = py - by;
+    
+    // Velocities at contact point
+    float va_x = a->vel.get(0, 0), va_y = a->vel.get(1, 0);
+    float vb_x = b->vel.get(0, 0), vb_y = b->vel.get(1, 0);
+    float omega_a = a->ang_vel.get(0, 0);
+    float omega_b = b->ang_vel.get(0, 0);
+    
+    // Add rotational contribution
+    va_x += -omega_a * ra_y;
+    va_y +=  omega_a * ra_x;
+    vb_x += -omega_b * rb_y;
+    vb_y +=  omega_b * rb_x;
+    
+    // Relative velocity
+    float v_rel_x = va_x - vb_x;
+    float v_rel_y = va_y - vb_y;
+    float v_rel_n = v_rel_x * nx + v_rel_y * ny;
+    
+    // Don't resolve if separating
+    if (v_rel_n > 0) return;
+    
+    // Coefficient of restitution (average)
+    float e = (a->restitution + b->restitution) / 2.0f;
+    
+    // Cross products for rotational contribution
+    float ra_cross_n = ra_x * ny - ra_y * nx;
+    float rb_cross_n = rb_x * ny - rb_y * nx;
+    
+    // Impulse magnitude
+    float denom = inv_m_a + inv_m_b + 
+                  ra_cross_n * ra_cross_n * inv_I_a +
+                  rb_cross_n * rb_cross_n * inv_I_b;
+    
+    float j = -(1.0f + e) * v_rel_n / denom;
+    
+    // Apply impulse
+    if (!a->is_static) {
+        float new_va_x = a->vel.get(0, 0) + j * nx * inv_m_a;
+        float new_va_y = a->vel.get(1, 0) + j * ny * inv_m_a;
+        float new_omega_a = a->ang_vel.get(0, 0) + ra_cross_n * j * inv_I_a;
+        
+        // Clamp angular velocity to prevent instability
+        const float MAX_OMEGA = 3.0f;  // ~170 degrees/sec
+        if (new_omega_a > MAX_OMEGA) new_omega_a = MAX_OMEGA;
+        if (new_omega_a < -MAX_OMEGA) new_omega_a = -MAX_OMEGA;
+        
+        std::vector<float> new_vel_a = {new_va_x, new_va_y};
+        a->vel = Tensor(new_vel_a, true);
+        std::vector<float> new_omega_a_vec = {new_omega_a};
+        a->ang_vel = Tensor(new_omega_a_vec, true);
     }
-
-    // AABB
-    s.min_x = std::min(x1, x2);
-    s.max_x = std::max(x1, x2);
-    s.min_y = std::min(y1, y2);
-    s.max_y = std::max(y1, y2);
     
-    // Expand AABB slightly for safety (e.g. penetration)
-    float margin = 1.0f;
-    s.min_x -= margin; s.max_x += margin;
-    s.min_y -= margin; s.max_y += margin;
+    if (!b->is_static) {
+        float new_vb_x = b->vel.get(0, 0) - j * nx * inv_m_b;
+        float new_vb_y = b->vel.get(1, 0) - j * ny * inv_m_b;
+        float new_omega_b = b->ang_vel.get(0, 0) - rb_cross_n * j * inv_I_b;
+        
+        std::vector<float> new_vel_b = {new_vb_x, new_vb_y};
+        b->vel = Tensor(new_vel_b, true);
+        std::vector<float> new_omega_b_vec = {new_omega_b};
+        b->ang_vel = Tensor(new_omega_b_vec, true);
+    }
     
-    static_geometry.push_back(s);
+    // --- FRICTION ---
+    // Recalculate relative velocity after normal impulse
+    float va_x2 = a->vel.get(0, 0);
+    float va_y2 = a->vel.get(1, 0);
+    float vb_x2 = b->vel.get(0, 0);
+    float vb_y2 = b->vel.get(1, 0);
+    float omega_a2 = a->ang_vel.get(0, 0);
+    float omega_b2 = b->ang_vel.get(0, 0);
+    
+    va_x2 += -omega_a2 * ra_y;
+    va_y2 +=  omega_a2 * ra_x;
+    vb_x2 += -omega_b2 * rb_y;
+    vb_y2 +=  omega_b2 * rb_x;
+    
+    float tx = -ny, ty = nx;  // Tangent
+    float v_rel_t = (va_x2 - vb_x2) * tx + (va_y2 - vb_y2) * ty;
+    
+    // Cross products for tangent
+    float ra_cross_t = ra_x * ty - ra_y * tx;
+    float rb_cross_t = rb_x * ty - rb_y * tx;
+    
+    float denom_t = inv_m_a + inv_m_b + 
+                    ra_cross_t * ra_cross_t * inv_I_a +
+                    rb_cross_t * rb_cross_t * inv_I_b;
+    
+    float friction_coef = (a->friction + b->friction) / 2.0f;
+    float j_t = -v_rel_t / denom_t;
+    j_t = std::max(-friction_coef * std::abs(j), std::min(friction_coef * std::abs(j), j_t));  // Clamp to Coulomb cone
+    
+    if (!a->is_static) {
+        float new_va_x = a->vel.get(0, 0) + j_t * tx * inv_m_a;
+        float new_va_y = a->vel.get(1, 0) + j_t * ty * inv_m_a;
+        float new_omega_a = a->ang_vel.get(0, 0) + ra_cross_t * j_t * inv_I_a;
+        std::vector<float> new_vel_a = {new_va_x, new_va_y};
+        a->vel = Tensor(new_vel_a, true);
+        std::vector<float> new_omega_a_vec = {new_omega_a};
+        a->ang_vel = Tensor(new_omega_a_vec, true);
+    }
+    
+    if (!b->is_static) {
+        float new_vb_x = b->vel.get(0, 0) - j_t * tx * inv_m_b;
+        float new_vb_y = b->vel.get(1, 0) - j_t * ty * inv_m_b;
+        float new_omega_b = b->ang_vel.get(0, 0) - rb_cross_t * j_t * inv_I_b;
+        std::vector<float> new_vel_b = {new_vb_x, new_vb_y};
+        b->vel = Tensor(new_vel_b, true);
+        std::vector<float> new_omega_b_vec = {new_omega_b};
+        b->ang_vel = Tensor(new_omega_b_vec, true);
+    }
 }
 
-void Engine::clear_geometry() {
-    static_geometry.clear();
+void Engine::resolve_collision(Body* a, Body* b) {
+    for (const Shape& sa : a->shapes) {
+        for (const Shape& sb : b->shapes) {
+            if (sa.type == Shape::BOX && sb.type == Shape::BOX) {
+                float pen, nx, ny, cx, cy;
+                if (detect_box_box(a, sa, b, sb, pen, nx, ny, cx, cy)) {
+                    // Position correction (push apart fully)
+                    float slop = 0.01f;  // Allow small penetration to avoid jitter
+                    float correction = std::max(pen - slop, 0.0f);
+                    
+                    if (!a->is_static && !b->is_static) {
+                        float total_mass = a->mass.get(0, 0) + b->mass.get(0, 0);
+                        float ratio_a = b->mass.get(0, 0) / total_mass;
+                        float ratio_b = a->mass.get(0, 0) / total_mass;
+                        
+                        float new_ax = a->pos.get(0, 0) - nx * correction * ratio_a;
+                        float new_ay = a->pos.get(1, 0) - ny * correction * ratio_a;
+                        std::vector<float> new_pos_a = {new_ax, new_ay};
+                        a->pos = Tensor(new_pos_a, true);
+                        
+                        float new_bx = b->pos.get(0, 0) + nx * correction * ratio_b;
+                        float new_by = b->pos.get(1, 0) + ny * correction * ratio_b;
+                        std::vector<float> new_pos_b = {new_bx, new_by};
+                        b->pos = Tensor(new_pos_b, true);
+                    } else if (!a->is_static) {
+                        float new_ax = a->pos.get(0, 0) - nx * correction;
+                        float new_ay = a->pos.get(1, 0) - ny * correction;
+                        std::vector<float> new_pos_a = {new_ax, new_ay};
+                        a->pos = Tensor(new_pos_a, true);
+                    } else if (!b->is_static) {
+                        float new_bx = b->pos.get(0, 0) + nx * correction;
+                        float new_by = b->pos.get(1, 0) + ny * correction;
+                        std::vector<float> new_pos_b = {new_bx, new_by};
+                        b->pos = Tensor(new_pos_b, true);
+                    }
+                    
+                    // Apply impulse
+                    apply_impulse(a, b, nx, ny, cx, cy);
+                }
+            }
+        }
+    }
 }
+
+// ============================================================================
+// Main Update Loop
+// ============================================================================
 
 void Engine::update() {
-    float sub_dt = dt / (float)substeps;
-
-    for (int step_i = 0; step_i < substeps; ++step_i) {
+    float sub_dt = dt / static_cast<float>(substeps);
+    
+    for (int step = 0; step < substeps; ++step) {
+        // 1. Apply gravity and integrate (update velocities and positions)
         for (Body* b : bodies) {
-            // Apply Gravity: F = m * g
-            Tensor force_gravity = gravity * b->mass; 
-            b->apply_force(force_gravity);
-
-            // --- Ground Segment Collision ---
-            std::vector<Tensor> corners = b->get_corners();
-            AABB b_aabb = b->get_aabb();
-
-            // Broadphase: Filter candidate segments
-            std::vector<int> candidates;
-            for (int i = 0; i < static_geometry.size(); ++i) {
-                const auto& seg = static_geometry[i];
-                if (aabb_overlap(b_aabb.min_x, b_aabb.max_x, b_aabb.min_y, b_aabb.max_y,
-                                  seg.min_x, seg.max_x, seg.min_y, seg.max_y)) {
-                    candidates.push_back(i);
-                }
+            apply_gravity(b, sub_dt);
+            integrate(b, sub_dt);
+        }
+        
+        // 2. Collision detection and response (after integration)
+        // This corrects positions and velocities for penetration
+        
+        // Dynamic vs Dynamic
+        for (size_t i = 0; i < bodies.size(); ++i) {
+            for (size_t j = i + 1; j < bodies.size(); ++j) {
+                resolve_collision(bodies[i], bodies[j]);
             }
-
-            // Narrowphase: Weighted Average Contact per Corner
-            for (size_t i = 0; i < corners.size(); i += 2) {
-                Tensor cx = corners[i];
-                Tensor cy = corners[i+1];
-                
-                float px = cx.get(0,0);
-                float py = cy.get(0,0);
-
-                // Accumulators for Weighted Average
-                // We need to initialize them. Tensors of 0.0f.
-                std::vector<float> zero_vec = {0.0f};
-                Tensor sum_fx = b->keep(Tensor(zero_vec, false));
-                Tensor sum_fy = b->keep(Tensor(zero_vec, false));
-                Tensor sum_weight = b->keep(Tensor(zero_vec, false)); // Weight by |dist|
-                
-                bool has_contact = false;
-
-                // Check all candidates
-                for (int seg_idx : candidates) {
-                    const auto& seg = static_geometry[seg_idx];
-
-                    // Signed Distance to Line
-                    float dx = px - seg.x1;
-                    float dy = py - seg.y1;
-                    float dist = dx * seg.nx + dy * seg.ny;
-
-                    // Check Bounds (Projection on Segment)
-                    float seg_dx = seg.x2 - seg.x1;
-                    float seg_dy = seg.y2 - seg.y1;
-                    float seg_len_sq = seg_dx*seg_dx + seg_dy*seg_dy;
-                    float t = (dx * seg_dx + dy * seg_dy) / seg_len_sq;
-
-                    // Relaxed Bounds for Vertex Overlap (Prevents tunneling at seams)
-                    float t_epsilon = 0.05f; // 5% extension to ensure overlap
-                    if (dist < 0.0f && t >= -t_epsilon && t <= 1.0f + t_epsilon) {
-                         has_contact = true;
-                         
-                         // --- 1. Calculate Per-Segment Force (Normal + Friction) ---
-                         
-                         // Penetration Depth & Normal Force
-                         std::vector<float> vec_x1 = {seg.x1};
-                         std::vector<float> vec_y1 = {seg.y1};
-                         
-                         Tensor& x1_t = b->keep(Tensor(vec_x1, false));
-                         Tensor& y1_t = b->keep(Tensor(vec_y1, false));
-                         
-                         Tensor& diff_x = b->keep(cx - x1_t);
-                         Tensor& diff_y = b->keep(cy - y1_t);
-                         
-                         Tensor& term_x = b->keep(diff_x * seg.nx);
-                         Tensor& term_y = b->keep(diff_y * seg.ny);
-                         
-                         Tensor& dist_t = b->keep(term_x + term_y); // Negative value
-
-                         Tensor& spring_force_mag = b->keep(dist_t * (-1.0f * seg.k));
-                         
-                         // Velocity Calculation (Point Velocity)
-                         Tensor pos_x = const_cast<Tensor&>(b->pos).select(0);
-                         Tensor pos_y = const_cast<Tensor&>(b->pos).select(1);
-                         b->keep(pos_x); b->keep(pos_y);
-                         
-                         Tensor& rx = b->keep(cx - pos_x);
-                         Tensor& ry = b->keep(cy - pos_y);
-                         
-                         Tensor& omega = b->keep(b->ang_vel); 
-                         
-                         Tensor& v_rot_x = b->keep(omega * ry * -1.0f);
-                         Tensor& v_rot_y = b->keep(omega * rx);
-                         
-                         Tensor vx = const_cast<Tensor&>(b->vel).select(0);
-                         Tensor vy = const_cast<Tensor&>(b->vel).select(1);
-                         b->keep(vx); b->keep(vy);
-                         
-                         Tensor& vp_x = b->keep(vx + v_rot_x);
-                         Tensor& vp_y = b->keep(vy + v_rot_y);
-                         
-                         // Normal Damping
-                         Tensor& vp_proj_x = b->keep(vp_x * seg.nx);
-                         Tensor& vp_proj_y = b->keep(vp_y * seg.ny);
-                         Tensor& v_proj = b->keep(vp_proj_x + vp_proj_y);
-                         
-                         Tensor& damp_force_mag = b->keep(v_proj * (-1.0f * seg.damping));
-                         
-                         Tensor& total_normal_mag = b->keep(spring_force_mag + damp_force_mag);
-                         
-                         // Normal Force Vector
-                         std::vector<float> n_vec = {seg.nx, seg.ny};
-                         Tensor& n_tensor = b->keep(Tensor(n_vec, false));
-                         Tensor& f_normal = b->keep(n_tensor * total_normal_mag);
-                         
-                         // Friction
-                         float tx = -seg.ny;
-                         float ty = seg.nx;
-                         
-                         Tensor& vt_proj_x = b->keep(vp_x * tx);
-                         Tensor& vt_proj_y = b->keep(vp_y * ty);
-                         Tensor& v_tan = b->keep(vt_proj_x + vt_proj_y);
-                         
-                         Tensor& friction_coeff = b->keep(total_normal_mag * (-1.0f * seg.friction));
-                         Tensor& tan_dir = b->keep(v_tan * 2.0f); 
-                         Tensor& friction_dir = b->keep(tanh(tan_dir)); 
-                         Tensor& f_friction_mag = b->keep(friction_coeff * friction_dir);
-                         
-                         std::vector<float> t_vec = {tx, ty};
-                         Tensor& t_tensor = b->keep(Tensor(t_vec, false));
-                         Tensor& f_friction = b->keep(t_tensor * f_friction_mag);
-                         
-                         // Sub-Total Force for this Segment
-                         Tensor& f_seg = b->keep(f_normal + f_friction);
-                         
-                         Tensor& f_seg_x = b->keep(f_seg.select(0));
-                         Tensor& f_seg_y = b->keep(f_seg.select(1));
-                         
-                         // --- 2. Accumulate Weighted ---
-                         // Weight = |dist_t| = -dist_t
-                         Tensor& weight = b->keep(dist_t * -1.0f);
-                         
-                         Tensor& w_fx = b->keep(f_seg_x * weight);
-                         Tensor& w_fy = b->keep(f_seg_y * weight);
-                         
-                         // Update Sums (New tensors)
-                         sum_fx = b->keep(sum_fx + w_fx);
-                         sum_fy = b->keep(sum_fy + w_fy);
-                         sum_weight = b->keep(sum_weight + weight);
-                    }
-                }
-
-                // Apply Weighted Average Force
-                if (has_contact) {
-                     // F_final = Sum_Weighted_F / Sum_Weights
-                     // Note: If weight is super small, this could be unstable? 
-                     // But we only enter here if dist < 0, so weight > 0.
-                     
-                     Tensor& final_fx = b->keep(sum_fx / sum_weight);
-                     Tensor& final_fy = b->keep(sum_fy / sum_weight);
-                     
-                     // Combined Vector (2,1)
-                     // Does Tensor have a constructor for (2,1) from two scalars? No.
-                     // stack? bindings has static stack?
-                     // Let's use std::vector<float> approach is hard because values are Tensors.
-                     // Engine doesn't have a 'stack' helper easily accessible on Body?
-                     // Body::keep returns Tensor&.
-                     // Tensor::stack(std::vector<Tensor*>) is static.
-                     // We need to call Tensor::stack.
-                     
-                     std::vector<Tensor*> components;
-                     components.push_back(&final_fx);
-                     components.push_back(&final_fy);
-                     Tensor& total_force = b->keep(Tensor::stack(components));
-
-                     // Apply at Point
-                     // Which point? The corner itself (cx, cy).
-                     std::vector<float> x_axis = {1.0f, 0.0f};
-                     std::vector<float> y_axis = {0.0f, 1.0f};
-                     Tensor& ax_x = b->keep(Tensor(x_axis, false));
-                     Tensor& ax_y = b->keep(Tensor(y_axis, false));
-                     
-                     Tensor& pc1 = b->keep(ax_x * cx);
-                     Tensor& pc2 = b->keep(ax_y * cy);
-                     Tensor& p_corner = b->keep(pc1 + pc2);
-
-                     b->apply_force_at_point(total_force, p_corner);
-                }
+        }
+        
+        // Dynamic vs Static (colliders)
+        for (Body* b : bodies) {
+            for (Body* c : colliders) {
+                resolve_collision(b, c);
             }
-            // Integrate
-            b->step(sub_dt); 
+        }
+    }
+    
+    // Clear garbage collectors
+    for (Body* b : bodies) {
+        b->garbage_collector.clear();
+    }
+}
+
+// ============================================================================
+// Rendering
+// ============================================================================
+
+void Engine::render_bodies() {
+    // Render colliders (static geometry) in gray
+    for (Body* c : colliders) {
+        for (const auto& shape : c->shapes) {
+            if (shape.type == Shape::BOX) {
+                renderer->draw_box(c->get_x(), c->get_y(), 
+                                   shape.width, shape.height, 
+                                   c->get_rotation(),
+                                   0.4f, 0.4f, 0.4f);  // Gray
+            }
+        }
+    }
+    
+    // Render dynamic bodies in default color
+    for (Body* b : bodies) {
+        for (const auto& shape : b->shapes) {
+            if (shape.type == Shape::BOX) {
+                renderer->draw_box(b->get_x(), b->get_y(), 
+                                   shape.width, shape.height, 
+                                   b->get_rotation());
+            }
         }
     }
 }
 
-void Engine::render_bodies() {
-     for (Body* b : bodies) {
-        // Simple shape rendering (BOX only for now)
-        for (const auto& s : b->shapes) {
-            if (s.type == Shape::BOX) {
-                renderer->draw_box(b->get_x(), b->get_y(), s.width, s.height, b->get_rotation());
-            }
-        }
+bool Engine::step() {
+    if (!renderer->process_events()) {
+        return false;
     }
+    renderer->clear();
+    update();
+    render_bodies();
+    renderer->present();
+    return true;
 }

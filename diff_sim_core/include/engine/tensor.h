@@ -74,7 +74,7 @@ public:
     Tensor pow(float exponent);
 
     // Core Ops
-    Tensor select(int idx); // Differentiable indexing
+    Tensor select(int idx) const; // Differentiable indexing
     static Tensor stack(const std::vector<Tensor*>& tensors); // Differentiable stacking
     static Tensor cat(const std::vector<Tensor*>& tensors, int dim); // Differentiable concatenation
     Tensor reshape(int r, int c);

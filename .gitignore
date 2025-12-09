@@ -16,7 +16,7 @@ diff_sim_core/extern/
 diff_sim_core/extern/SDL2/
 diff_sim_core/extern/lib/
 
-docs/
+#docs/
 
 # IDEs
 .vscode/

@@ -116,12 +116,16 @@ PYBIND11_MODULE(forgeNN_cpp, m) {
         .def("apply_force_at_point", &Body::apply_force_at_point, py::arg("force"), py::arg("point"))
         .def("apply_torque", &Body::apply_torque)
         .def("reset_forces", &Body::reset_forces)
-        .def_property_readonly("pos", [](Body& b) { return b.pos; })
-        .def_property_readonly("vel", [](Body& b) { return b.vel; })
-        .def_property_readonly("rotation", [](Body& b) { return b.rotation; })
+        .def_property_readonly("pos", [](Body& b) -> Tensor& { return b.pos; }, py::return_value_policy::reference_internal)
+        .def_property_readonly("vel", [](Body& b) -> Tensor& { return b.vel; }, py::return_value_policy::reference_internal)
+        .def_property_readonly("rotation", [](Body& b) -> Tensor& { return b.rotation; }, py::return_value_policy::reference_internal)
+        .def_property_readonly("ang_vel", [](Body& b) -> Tensor& { return b.ang_vel; }, py::return_value_policy::reference_internal)
         .def("get_x", &Body::get_x)
         .def("get_y", &Body::get_y)
-        .def("get_rotation", &Body::get_rotation);
+        .def("get_rotation", &Body::get_rotation)
+        .def_readwrite("is_static", &Body::is_static)
+        .def_readwrite("friction", &Body::friction)
+        .def_readwrite("restitution", &Body::restitution);
 
     py::class_<Renderer>(m, "Renderer")
         .def("get_width", &Renderer::get_width, "Get the window width in pixels.")
@@ -146,8 +150,9 @@ PYBIND11_MODULE(forgeNN_cpp, m) {
         .def("set_gravity", &Engine::set_gravity)
         .def("step", &Engine::step, "Run one simulation step. Returns False if Quit event received.")
         .def("update", &Engine::update, "Run one physics step (forces, collision, integration).")
-        .def("render_bodies", &Engine::render_bodies, "Render all bodies to the current renderer context.")
-        .def("add_ground_segment", &Engine::add_ground_segment, py::arg("x1"), py::arg("y1"), py::arg("x2"), py::arg("y2"), py::arg("friction")=0.5f)
-        .def("clear_geometry", &Engine::clear_geometry)
+        .def("render_bodies", &Engine::render_bodies, "Render all bodies + colliders.")
+        .def("add_collider", &Engine::add_collider, py::arg("x"), py::arg("y"), py::arg("width"), py::arg("height"), py::arg("rotation")=0.0f,
+             py::return_value_policy::reference, "Add a static box collider (ground, wall, platform).")
+        .def("clear_colliders", &Engine::clear_colliders, "Remove all static colliders.")
         .def("get_renderer", &Engine::get_renderer, py::return_value_policy::reference);
 }
