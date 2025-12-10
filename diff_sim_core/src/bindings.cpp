@@ -17,7 +17,7 @@ float add_cpp(float a, float b) {
     return a + b;
 }
 
-PYBIND11_MODULE(forgeNN_cpp, m) {
+PYBIND11_MODULE(rigidRL, m) {
     m.doc() = "forgeNN++: C++ Core (Eigen Backend)";
 
     m.def("add", &add_cpp, "A test function that adds two numbers");
@@ -123,6 +123,9 @@ PYBIND11_MODULE(forgeNN_cpp, m) {
         .def("get_x", &Body::get_x)
         .def("get_y", &Body::get_y)
         .def("get_rotation", &Body::get_rotation)
+        .def("set_rotation", [](Body& b, float angle) {
+            b.rotation = Tensor(std::vector<float>{angle}, true);
+        }, py::arg("angle"))
         .def_readwrite("is_static", &Body::is_static)
         .def_readwrite("friction", &Body::friction)
         .def_readwrite("restitution", &Body::restitution);

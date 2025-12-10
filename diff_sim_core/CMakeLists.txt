@@ -49,7 +49,7 @@ else()
     pkg_check_modules(SDL2 REQUIRED sdl2)
 endif()
 
-# 5. Define the Module "forgeNN_cpp"
+# 5. Define the Module "rigidRL"
 # We only have one source file for now.
 # C++ Source Files
 set(SOURCES
@@ -58,24 +58,25 @@ set(SOURCES
     src/engine/activations.cpp
     src/engine/optimizers.cpp
     src/engine/body.cpp
+    src/engine/contact.cpp
     src/renderer/sdl_renderer.cpp
     src/engine/engine.cpp
 )
-pybind11_add_module(forgeNN_cpp ${SOURCES})
+pybind11_add_module(rigidRL ${SOURCES})
 
 # Link Libraries
 if(WIN32)
-    target_link_libraries(forgeNN_cpp PRIVATE Eigen3::Eigen SDL2::SDL2)
+    target_link_libraries(rigidRL PRIVATE Eigen3::Eigen SDL2::SDL2)
     
     # Copy SDL2.dll to the output directory
-    add_custom_command(TARGET forgeNN_cpp POST_BUILD
+    add_custom_command(TARGET rigidRL POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
         $<TARGET_FILE:SDL2::SDL2>
-        $<TARGET_FILE_DIR:forgeNN_cpp>
+        $<TARGET_FILE_DIR:rigidRL>
     )
 else()
-    target_include_directories(forgeNN_cpp PRIVATE ${SDL2_INCLUDE_DIRS})
-    target_link_libraries(forgeNN_cpp PRIVATE Eigen3::Eigen ${SDL2_LIBRARIES})
+    target_include_directories(rigidRL PRIVATE ${SDL2_INCLUDE_DIRS})
+    target_link_libraries(rigidRL PRIVATE Eigen3::Eigen ${SDL2_LIBRARIES})
     # Statically link libstdc++ to avoid GLIBCXX version mismatch with Conda (Linux only)
-    target_link_options(forgeNN_cpp PRIVATE -static-libstdc++ -static-libgcc)
+    target_link_options(rigidRL PRIVATE -static-libstdc++ -static-libgcc)
 endif()

@@ -1,62 +1,49 @@
 """
-Simple Physics Test
+Simple Physics Test - Multiple boxes falling on terrain
 """
 import sys
 import os
+import math
 
-# Add diff_sim_core to path for module and DLL loading
 script_dir = os.path.dirname(os.path.abspath(__file__))
 core_dir = os.path.join(os.path.dirname(script_dir), 'diff_sim_core')
-os.add_dll_directory(core_dir)  # For Windows DLL loading
+os.add_dll_directory(core_dir)
 sys.path.insert(0, core_dir)
 
-import forgeNN_cpp as fnn
-import time
+import rigidRL as rigid
 
 def run():
     print("=== Simple Physics Test ===")
-    engine = fnn.Engine(1200, 800, 80, 0.016, 10)
-    renderer = engine.get_renderer()
+    engine = rigid.Engine(1200, 800, 80, 0.016, 30)
     engine.set_gravity(0, -9.81)
     
-    # Create boxes (avoid landing on segment endpoints)
-    box1 = fnn.Body(0, 6, 1.0, 1.0, 1.0)
-    box2 = fnn.Body(-2, 8, 1.5, 0.8, 0.8)
-    box3 = fnn.Body(5, 10, 0.5, 1.2, 1.2)  # At x=5, lands between peak segments
+    # Create boxes
+    box1 = rigid.Body(0, 6, 4, 1.0, 1.0)
+    box2 = rigid.Body(-2, 8, 1.5, 0.2, 0.8)
+    box3 = rigid.Body(5, 10, 4, 1.2, 1.2)
+    box4 = rigid.Body(6, 12, 0.5, 1.2, 1.2)
+    box5 = rigid.Body(5, 15, 0.1, 0.6, 1.2)
     engine.add_body(box1)
     engine.add_body(box2)
     engine.add_body(box3)
+    engine.add_body(box4)
+    engine.add_body(box5)
     
-    # Ground
-    engine.add_ground_segment(-10, 0, 10, 0, 0.8)
+    # Ground - flat floor
+    engine.add_collider(0, -1, 25, 1, 0)
     
-    # V-shaped valley
-    engine.add_ground_segment(-6, 4, -2, 1, 0.5)
-    engine.add_ground_segment(-2, 1, 2, 4, 0.5)
+    # V-shaped valley (two angled platforms)
+    engine.add_collider(-4, 2.5, 5, 0.5, math.radians(-30))  # Left slope
+    engine.add_collider(0, 2.5, 5, 0.5, math.radians(30))    # Right slope
     
-    # Peak
-    engine.add_ground_segment(4, 0, 6, 3, 0.5)
-    engine.add_ground_segment(6, 3, 8, 0, 0.5)
+    # Peak (two angled platforms)
+    engine.add_collider(5, 1.5, 4, 0.5, math.radians(40))    # Left side
+    engine.add_collider(7, 1.5, 4, 0.5, math.radians(-40))   # Right side
     
     print("Press ESC or close window to exit")
     
-    while True:
-        if not renderer.process_events():
-            break
-            
-        engine.update()
-        renderer.clear()
-        
-        # Draw terrain
-        renderer.draw_line(-10, 0, 10, 0, 0.0, 1.0, 0.0)  # Floor
-        renderer.draw_line(-6, 4, -2, 1, 0.3, 0.3, 1.0)   # V left
-        renderer.draw_line(-2, 1, 2, 4, 0.3, 0.3, 1.0)    # V right
-        renderer.draw_line(4, 0, 6, 3, 1.0, 1.0, 0.0)     # Peak left
-        renderer.draw_line(6, 3, 8, 0, 1.0, 1.0, 0.0)     # Peak right
-        
-        engine.render_bodies()
-        renderer.present()
-        time.sleep(0.016)
+    while engine.step():
+        pass  # Frame rate is handled by engine.step()
 
 if __name__ == "__main__":
     run()

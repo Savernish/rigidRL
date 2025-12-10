@@ -50,11 +50,11 @@ This compiles the C++ core and generates the `forgeNN_cpp` Python module in the 
 ## Quick Start
 
 ```python
-import forgeNN_cpp as fnn
+import forgeNN_cpp as rigid
 
 # 1. Create Tensors
-x = fnn.Tensor([2.0], requires_grad=True)
-w = fnn.Tensor([3.0], requires_grad=True)
+x = rigid.Tensor([2.0], requires_grad=True)
+w = rigid.Tensor([3.0], requires_grad=True)
 
 # 2. Forward Pass
 y = x * w + x.sin()

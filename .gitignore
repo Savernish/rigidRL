@@ -10,7 +10,7 @@ diff_sim_core/extern/
 *.so
 *.dll
 *.exe
-*.txt
+
 
 # External deps (if not submodules)
 diff_sim_core/extern/SDL2/

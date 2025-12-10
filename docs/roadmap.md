@@ -9,15 +9,15 @@
 - The engine should have a basic, but usable rendering system. The render can be done with external libraries. But it should be done on the C++ "engine" part. we can have functions like lets say:
 
 ```python
-robot = fnn.Robot("2LegRobot") # A premade robot for the example.
+robot = rigid.Robot("2LegRobot") # A premade robot for the example.
 
 if __name__ == "__main__":
     while True:
         robot.simulate()
         robot.render()
-        fnn.EventManager.process_events() #for exiting the simulation with close events.
+        rigid.EventManager.process_events() #for exiting the simulation with close events.
     
-    fnn.clear()
+    rigid.clear()
 ```
 
 ### Loop

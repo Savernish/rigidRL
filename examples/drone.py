@@ -2,7 +2,7 @@ import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '../diff_sim_core'))
 
-import forgeNN_cpp as fnn
+import rigidRL as rigid
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
@@ -18,17 +18,17 @@ steps = 100 # 4 seconds
 
 # --- 2. Setup ---
 # Initial State: [x, vx, y, vy, theta, omega]
-state_init = fnn.Tensor([-5.0, 0.0, 5.0, 0.0, 0.0, 0.0], requires_grad=False)
+state_init = rigid.Tensor([-5.0, 0.0, 5.0, 0.0, 0.0, 0.0], requires_grad=False)
 
 # Controls: Two tensors of shape (steps, 1) effectively
 # We initialize them as flat vector (steps, 1) so we can select(i)
 # Init at hover thrust (mg/2 = 4.9)
 initial_thrust = [4.9 for _ in range(steps)]
-thrust_left = fnn.Tensor(initial_thrust, requires_grad=True)
-thrust_right = fnn.Tensor(initial_thrust, requires_grad=True)
+thrust_left = rigid.Tensor(initial_thrust, requires_grad=True)
+thrust_right = rigid.Tensor(initial_thrust, requires_grad=True)
 
 # Optimizer
-optimizer = fnn.AdamW([thrust_left, thrust_right], lr=0.1, weight_decay=0.0)
+optimizer = rigid.AdamW([thrust_left, thrust_right], lr=0.1, weight_decay=0.0)
 
 print("Starting Drone Optimization (Vectorized)...")
 
@@ -44,18 +44,18 @@ def simulate_step(state, tl, tr):
 
     # Physics
     F = tl + tr
-    tau = (tr - tl) * fnn.Tensor([L])
+    tau = (tr - tl) * rigid.Tensor([L])
     
     sin_th = theta.sin()
     cos_th = theta.cos()
     
     # Accelerations
     # ax = -F * sin_th / m
-    ax = (fnn.Tensor([-1.0]) * F * sin_th) / fnn.Tensor([m])
+    ax = (rigid.Tensor([-1.0]) * F * sin_th) / rigid.Tensor([m])
     # ay = F * cos_th / m - g
-    ay = (F * cos_th) / fnn.Tensor([m]) - fnn.Tensor([g])
+    ay = (F * cos_th) / rigid.Tensor([m]) - rigid.Tensor([g])
     # alpha = tau / I
-    alpha = tau / fnn.Tensor([I])
+    alpha = tau / rigid.Tensor([I])
     
     # Integration (Euler)
     new_x = x + vx * dt
@@ -67,7 +67,7 @@ def simulate_step(state, tl, tr):
     
     # Reassemble state using Stack or Cat
     # Stack creates (6, 1) from scalars
-    next_state = fnn.Tensor.stack([new_x, new_vx, new_y, new_vy, new_theta, new_omega])
+    next_state = rigid.Tensor.stack([new_x, new_vx, new_y, new_vy, new_theta, new_omega])
     
     return next_state
 
@@ -78,7 +78,7 @@ for epoch in range(200):
     optimizer.zero_grad()
     
     curr_state = state_init
-    total_loss = fnn.Tensor([0.0])
+    total_loss = rigid.Tensor([0.0])
     
     # Tracking
     min_y = 100.0
@@ -104,7 +104,7 @@ for epoch in range(200):
         # Loss Terms
         # Target: x=0, y=0.5
         # Use pow(2) instead of x*x
-        dist_sq = x.pow(2.0) + (y - fnn.Tensor([0.5])).pow(2.0)
+        dist_sq = x.pow(2.0) + (y - rigid.Tensor([0.5])).pow(2.0)
         vel_sq = vx.pow(2.0) + vy.pow(2.0)
         angle_sq = theta.pow(2.0)
         
@@ -112,11 +112,11 @@ for epoch in range(200):
         # Or standard barrier.
         # Let's use relu to ensure y+5 is positive? No, barrier should push back.
         # Just standard.
-        floor_dist = y + fnn.Tensor([5.0])
-        floor_penalty = fnn.Tensor([1.0]) / floor_dist
+        floor_dist = y + rigid.Tensor([5.0])
+        floor_penalty = rigid.Tensor([1.0]) / floor_dist
         
         # Effort
-        hover = fnn.Tensor([4.9])
+        hover = rigid.Tensor([4.9])
         effort = (tl - hover).pow(2.0) + (tr - hover).pow(2.0)
         
         step_loss = dist_sq * 10.0 + vel_sq * 1.0 + angle_sq * 10.0 + effort * 0.001 + floor_penalty * 20.0

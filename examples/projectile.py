@@ -2,17 +2,17 @@ import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '../diff_sim_core'))
 
-import forgeNN_cpp as fnn
+import rigidRL as rigid
 
 # 1. Setup Simulation
-target = fnn.Tensor([100.0, 0.0])
-start_pos = fnn.Tensor([0.0, 0.0])
-gravity = fnn.Tensor([0.0, -9.81])
+target = rigid.Tensor([100.0, 0.0])
+start_pos = rigid.Tensor([0.0, 0.0])
+gravity = rigid.Tensor([0.0, -9.81])
 
 # We optimize the initial velocity vector [vx, vy] directly
-velocity = fnn.Tensor([10.0, 10.0], requires_grad=True)
+velocity = rigid.Tensor([10.0, 10.0], requires_grad=True)
 
-optimizer = fnn.SGD([velocity], lr=0.001)
+optimizer = rigid.SGD([velocity], lr=0.001)
 
 dt = 0.1
 steps = 200

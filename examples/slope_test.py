@@ -1,60 +1,53 @@
 """
-Slope Test - One box on a slope
+Slope Test - Box sliding down a slope
+Tests friction and collision on angled surfaces
 """
 import sys
 import os
+import math
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 core_dir = os.path.join(os.path.dirname(script_dir), 'diff_sim_core')
 os.add_dll_directory(core_dir)
 sys.path.insert(0, core_dir)
 
-import forgeNN_cpp as fnn
+import rigidRL as rigid
 import time
 
 def run():
     print("=== Slope Test ===")
-    engine = fnn.Engine(800, 600, 100, 0.016, 10)
+    engine = rigid.Engine(800, 600, 50, 0.016, 30)
     renderer = engine.get_renderer()
     engine.set_gravity(0, -9.81)
     
-    # Box above the slope
-    box = fnn.Body(-3, 4, 1.0, 1.0, 1.0)
+    # Box at top of slope
+    box = rigid.Body(-3, 4, 1.0, 1.0, 1.0)
     engine.add_body(box)
     
-    # Single slope going down-right
-    # From (-5, 3) to (0, 0)
-    engine.add_ground_segment(-5, 3, 0, 0, 0.5)
+    # Slope: 30 degree angle, using add_collider with rotation
+    slope_angle = 30  # degrees
+    slope_length = 8
+    slope_cx = -2.5  # center x
+    slope_cy = 1.5   # center y
+    engine.add_collider(slope_cx, slope_cy, slope_length, 0.5, math.radians(-slope_angle))
     
-    # Flat floor to catch it
-    engine.add_ground_segment(-10, -1, 10, -1, 0.5)
+    # Flat floor
+    engine.add_collider(2, -2, 10, 1, 0)
     
     print("Box should slide down slope...")
     
     frame = 0
-    start = time.time()
-    while time.time() - start < 5:
-        if not renderer.process_events():
+    while frame < 300:
+        if not engine.step():
             break
             
-        engine.update()
-        
         if frame % 30 == 0:
             x = box.get_x()
             y = box.get_y()
-            print(f"Frame {frame}: pos=({x:.3f}, {y:.3f})")
-            if abs(x) > 100 or abs(y) > 100:
-                print("EXPLOSION!")
-                break
-        
-        renderer.clear()
-        renderer.draw_line(-5, 3, 0, 0, 1.0, 1.0, 0.0)  # Slope
-        renderer.draw_line(-10, -1, 10, -1, 0.0, 1.0, 0.0)  # Floor
-        engine.render_bodies()
-        renderer.present()
+            rot = math.degrees(box.get_rotation())
+            print(f"Frame {frame}: pos=({x:.2f}, {y:.2f}) rot={rot:.1f}°")
         
         frame += 1
-        time.sleep(0.016)
 
 if __name__ == "__main__":
     run()

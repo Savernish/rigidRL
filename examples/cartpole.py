@@ -2,7 +2,7 @@ import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '../diff_sim_core'))
 
-import forgeNN_cpp as fnn
+import rigidRL as rigid
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
@@ -17,19 +17,19 @@ steps = 100 # 5 seconds horizon
 
 # --- Setup ---
 # Initialize separate scalar tensors for state so we can do math on them
-x = fnn.Tensor([0.0])
-dx = fnn.Tensor([0.0])
-theta = fnn.Tensor([0.1]) # Start with small angle (approx 6 deg)
-dtheta = fnn.Tensor([0.0])
+x = rigid.Tensor([0.0])
+dx = rigid.Tensor([0.0])
+theta = rigid.Tensor([0.1]) # Start with small angle (approx 6 deg)
+dtheta = rigid.Tensor([0.0])
 
 # Control: A sequence of forces to optimize
 forces = []
 for i in range(steps):
-    t = fnn.Tensor([0.0], requires_grad=True)
+    t = rigid.Tensor([0.0], requires_grad=True)
     forces.append(t)
 
 # Optimizer takes the list of force tensors
-optimizer = fnn.Adam(forces, lr=0.05)
+optimizer = rigid.Adam(forces, lr=0.05)
 
 # --- 2. Simulation Loop ---
 
@@ -41,7 +41,7 @@ for epoch in range(200):
     curr_theta = theta
     curr_dtheta = dtheta
 
-    total_loss = fnn.Tensor([0.0])
+    total_loss = rigid.Tensor([0.0])
 
     for i in range(steps):
         r = forces[i]
@@ -56,19 +56,19 @@ for epoch in range(200):
 
        # theta_acc calculation
         # numer = g * sin_th - cos_th * partial / total_m
-        numer = sin_th * g - cos_th * (partial / fnn.Tensor([total_m])) # div needs tensor? scalar div works? 
+        numer = sin_th * g - cos_th * (partial / rigid.Tensor([total_m])) # div needs tensor? scalar div works? 
         # Actually our C++ supports Tensor/Tensor and Tensor/float. 
         # (partial / total_m) works if total_m is float.
         
         # denom = L * (4/3 - mp * cos_th^2 / total_m)
         denom_term = (cos_th * cos_th) * (mp / total_m)
-        denom = (fnn.Tensor([4.0/3.0]) - denom_term) * L
+        denom = (rigid.Tensor([4.0/3.0]) - denom_term) * L
         
         theta_acc = numer / denom
         
         # x_acc calculation
         # x_acc = (partial - mp * L * theta_acc * cos_th) / total_m
-        x_acc = (partial - cos_th * theta_acc * (mp * L)) / fnn.Tensor([total_m])
+        x_acc = (partial - cos_th * theta_acc * (mp * L)) / rigid.Tensor([total_m])
         
         # 4. Euler Integration
         curr_x = curr_x + curr_dx * dt
@@ -110,11 +110,11 @@ for i in range(steps):
     dth_sq = curr_dtheta * curr_dtheta
     partial = r + sin_th * dth_sq * (mp * L)
     total_m = mc + mp
-    numer = sin_th * g - cos_th * (partial / fnn.Tensor([total_m]))
+    numer = sin_th * g - cos_th * (partial / rigid.Tensor([total_m]))
     denom_term = (cos_th * cos_th) * (mp / total_m)
-    denom = (fnn.Tensor([4.0/3.0]) - denom_term) * L
+    denom = (rigid.Tensor([4.0/3.0]) - denom_term) * L
     theta_acc = numer / denom
-    x_acc = (partial - cos_th * theta_acc * (mp * L)) / fnn.Tensor([total_m])
+    x_acc = (partial - cos_th * theta_acc * (mp * L)) / rigid.Tensor([total_m])
     
     curr_x = curr_x + curr_dx * dt
     curr_dx = curr_dx + x_acc * dt

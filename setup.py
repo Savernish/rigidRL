@@ -55,13 +55,13 @@ class CMakeBuild(build_ext):
         subprocess.check_call(['cmake', '--build', '.'] + build_args, cwd=self.build_temp)
 
 setup(
-    name='forgeNN_cpp',
-    version='0.1.0',
+    name='rigidRL',
+    version='0.2.0',
     author='Savern',
-    description='High-Performance C++ Autograd Engine',
+    description='High-Performance Differentiable Rigid Body Physics for RL',
     # Tell setuptools that packages are found in diff_sim_core
     package_dir={'': 'diff_sim_core'},
-    ext_modules=[CMakeExtension('forgeNN_cpp', sourcedir='diff_sim_core')],
+    ext_modules=[CMakeExtension('rigidRL', sourcedir='diff_sim_core')],
     cmdclass=dict(build_ext=CMakeBuild),
     zip_safe=False,
 )
