@@ -10,7 +10,7 @@ SDLRenderer::SDLRenderer(int width, int height, float scale_factor)
         return;
     }
 
-    window = SDL_CreateWindow("ForgeNN Physics Engine", 
+    window = SDL_CreateWindow("rigidRL Physics Engine", 
                               SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 
                               width, height, SDL_WINDOW_SHOWN);
     if (!window) {

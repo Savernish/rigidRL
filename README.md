@@ -1,103 +1,89 @@
 # rigidRL
 
-**High-Performance C++ Autograd Engine for Differentiable Physics**
+**High-Performance Differentiable Rigid Body Physics for Reinforcement Learning**
 
 ## Overview
 
-forgeNN++ is a C++17 port of the forgeNN deep learning framework. It replaces the NumPy-based autograd engine with a compiled, graph-based C++ core backed by Eigen. It exposes a Python interface via Pybind11, offering significant performance improvements for physics-heavy optimization loops and differential simulations.
+rigidRL is a differentiable 2D physics engine built for RL robotics research. It features a C++17 core with automatic differentiation, real-time SDL2 rendering, and Python bindings for seamless integration with ML workflows.
 
-## Key Features
+## Features
 
-- **C++17 Core**: Zero-overhead abstraction over Eigen3 matrix operations.
-- **Reverse-Mode Autograd**: Dynamic computation graph with automatic differentiation.
-- **Python Bindings**: Seamless integration with Python ecosystem (Matplotlib, NumPy).
-- **Optimizers**: SGD, Adam, AdamW (with decoupled weight decay).
-- **Differentiable Physics**: Production-hardened on 6-DOF Drone, Cartpole, and Projectile simulations.
-
-## Performance
-
-Benchmark comparison running a 6-DOF Drone Simulation (200 epochs of optimization):
-
-| Implementation | Execution Time | Speedup |
-| :--- | :--- | :--- |
-| forgeNN (Python) | 15.25s | 1.0x |
-| **forgeNN++ (C++)** | **1.29s** | **11.7x** |
+- **Rigid Body Physics**: Multi-point collision detection, impulse-based response, friction
+- **Differentiable Core**: Reverse-mode autograd for gradients through physics
+- **Real-time Rendering**: SDL2 visualization with frame rate control
+- **Python Interface**: Easy integration via `import rigidRL as rigid`
+- **Optimizers**: SGD, Adam, AdamW built-in
 
 ## Installation
 
-### Requirements
-
-- CMake 3.10+
-- C++17 Compiler (GCC/Clang)
-- Python 3.x development headers
-- Eigen3 (System or Submodule)
-- Pybind11 (System or Submodule)
-
-### Build
-
-### Build
-Run `compile.bat` on Windows or:
+**Requirements:** CMake 3.10+, C++17 compiler, Python 3.x, Eigen3, SDL2, Pybind11
 
 ```bash
+# Windows
+.\compile.bat
+
+# Linux/Mac
 pip install -e .
 ```
-
-This compiles the C++ core and installs the `forgeNN_cpp` Python module in development mode.
-You can verify the build with `python examples/test_engine_loop.py`.
-
-This compiles the C++ core and generates the `forgeNN_cpp` Python module in the current directory.
 
 ## Quick Start
 
 ```python
-import forgeNN_cpp as rigid
+import rigidRL as rigid
 
-# 1. Create Tensors
-x = rigid.Tensor([2.0], requires_grad=True)
-w = rigid.Tensor([3.0], requires_grad=True)
+# Create engine (width, height, scale, dt, substeps)
+engine = rigid.Engine(800, 600, 50, 0.016, 30)
+engine.set_gravity(0, -9.81)
 
-# 2. Forward Pass
-y = x * w + x.sin()
+# Add static colliders (floor, walls, slopes)
+engine.add_collider(0, -1, 20, 1, 0)  # Flat floor
 
-# 3. Backward Pass
-y.backward()
+# Add dynamic bodies (x, y, mass, width, height)
+box = rigid.Body(0, 5, 1.0, 1, 1)
+engine.add_body(box)
 
-# 4. Access Gradients
-# dy/dx = w + cos(x) = 3 + cos(2)
-print(f"dy/dx: {x.grad.data[0]}") 
-# dy/dw = x = 2
-print(f"dy/dw: {w.grad.data[0]}") 
+# Run simulation loop
+while engine.step():
+    pass  # Rendering & frame rate handled automatically
 ```
 
-## Differentiable Simulation Examples
+## Examples
 
-The `examples/` directory contains fully differentiable physics simulations powered by forgeNN++.
+| Example | Description |
+|---------|-------------|
+| `stress_test.py` | 28 boxes, pyramids, slopes, multi-body stacking |
+| `rotation_test.py` | Box settling from initial rotation |
+| `slope_test.py` | Sliding on angled surfaces |
+| `impulse_test.py` | Collision response testing |
+| `falling_box_visual.py` | Visual demo with varied box sizes |
 
-### 1. Drone Landing (6-DOF Quadrotor)
-Optimizes motor thrusts to land a drone safely using a custom loss function with ground barriers.
+### RL Examples (Differentiable)
+
+| Example | Description |
+|---------|-------------|
+| `drone.py` | 6-DOF quadrotor landing optimization |
+| `cartpole.py` | Classic control via gradient descent |
+| `projectile.py` | Trajectory optimization |
 
 ![Drone Simulation](examples/drone.gif)
-
-### 2. Cartpole Stabilization
-Classic non-linear control problem solved via gradient descent through time.
-
 ![Cartpole Simulation](examples/cartpole.gif)
 
-### 3. Projectile Optimization
-Basic trajectory plotting and targeting.
+## Physics API
 
-### 3. Projectile Optimization
-Basic trajectory plotting and targeting.
+```python
+# Body properties
+box.get_x(), box.get_y()      # Position
+box.get_rotation()            # Angle (radians)
+box.set_rotation(angle)       # Set initial rotation
+box.friction                  # Friction coefficient (0-1)
+box.restitution              # Bounciness (0-1)
+box.is_static                # Static body flag
 
-### 4. Engine Loop Demo
-Demonstrates the new C++ Engine Loop class with automatic physics and rendering.
-
-```bash
-python examples/test_engine_loop.py
-```
-
-```bash
-python examples/drone.py
+# Engine methods
+engine.add_collider(x, y, w, h, rotation)  # Static geometry
+engine.add_body(body)                       # Dynamic body
+engine.set_gravity(x, y)                    # Gravity vector
+engine.step()                               # Update + render
 ```
 
 ## Author

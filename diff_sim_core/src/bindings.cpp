@@ -18,7 +18,7 @@ float add_cpp(float a, float b) {
 }
 
 PYBIND11_MODULE(rigidRL, m) {
-    m.doc() = "forgeNN++: C++ Core (Eigen Backend)";
+    m.doc() = "rigidRL: C++ Core (Eigen Backend)";
 
     m.def("add", &add_cpp, "A test function that adds two numbers");
 
