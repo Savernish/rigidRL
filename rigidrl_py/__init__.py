@@ -1,0 +1,1 @@
+# rigidRL Python package

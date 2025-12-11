@@ -31,6 +31,7 @@ public:
     
     // Body management
     void add_body(Body* b);
+    void clear_bodies();  // Remove all dynamic bodies (for episode reset)
     
     // Static geometry (ground, walls, platforms)
     Body* add_collider(float x, float y, float width, float height, float rotation = 0.0f);

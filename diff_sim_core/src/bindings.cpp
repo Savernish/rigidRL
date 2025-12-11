@@ -174,5 +174,6 @@ PYBIND11_MODULE(rigidRL, m) {
         .def("add_collider", &Engine::add_collider, py::arg("x"), py::arg("y"), py::arg("width"), py::arg("height"), py::arg("rotation")=0.0f,
              py::return_value_policy::reference, "Add a static box collider (ground, wall, platform).")
         .def("clear_colliders", &Engine::clear_colliders, "Remove all static colliders.")
+        .def("clear_bodies", &Engine::clear_bodies, "Remove all dynamic bodies (for episode reset).")
         .def("get_renderer", &Engine::get_renderer, py::return_value_policy::reference);
 }

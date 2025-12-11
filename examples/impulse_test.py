@@ -24,8 +24,8 @@ def run():
     engine.add_collider(0, 3, 6, 0.5, math.radians(40))
     
     # Dynamic boxes
-    box1 = rigid.Body(0, 5, 1.0, 1, 1)      # Above floor
-    box2 = rigid.Body(-3.5, 6, 1.0, 0.8, 0.8)  # Above slope
+    box1 = rigid.Body(0, 5, 600000, 1, 1)      # Above floor
+    box2 = rigid.Body(-4, 0.00011, 100.0, 0.8, 0.8)  # Above slope
     
     engine.add_body(box1)
     engine.add_body(box2)

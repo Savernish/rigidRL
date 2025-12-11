@@ -47,6 +47,17 @@ void Engine::clear_colliders() {
     colliders.clear();
 }
 
+void Engine::clear_bodies() {
+    // Clear contact manager first
+    contact_manager.clear();
+    
+    // Delete all dynamic bodies
+    for (Body* b : bodies) {
+        delete b;
+    }
+    bodies.clear();
+}
+
 void Engine::set_gravity(float x, float y) {
     gravity_x = x;
     gravity_y = y;
