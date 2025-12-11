@@ -13,6 +13,7 @@ diff_sim_core/extern/
 docs/
 
 
+
 # External deps (if not submodules)
 diff_sim_core/extern/SDL2/
 diff_sim_core/extern/lib/
