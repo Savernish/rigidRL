@@ -45,8 +45,11 @@ PYBIND11_MODULE(rigidRL, m) {
         .def_property("grad", &Tensor::get_grad, &Tensor::set_grad)
 
 
+
         .def("sin", &Tensor::sin, py::keep_alive<0, 1>())
         .def("cos", &Tensor::cos, py::keep_alive<0, 1>())
+        .def("exp", &Tensor::exp, py::keep_alive<0, 1>())
+        .def("log", &Tensor::log, py::keep_alive<0, 1>())
         .def("select", &Tensor::select, py::keep_alive<0, 1>())
         .def("__getitem__", &Tensor::select, py::keep_alive<0, 1>()) // Enable t[i] syntax
         .def_static("stack", &Tensor::stack, py::keep_alive<0, 1>()) // Static method
@@ -84,7 +87,15 @@ PYBIND11_MODULE(rigidRL, m) {
         .def("pow", &Tensor::pow, py::keep_alive<0, 1>())
         .def("__pow__", &Tensor::pow, py::keep_alive<0, 1>())
         .def("reshape", &Tensor::reshape, py::keep_alive<0, 1>())
-        .def_static("cat", &Tensor::cat, py::keep_alive<0, 1>());
+        .def_static("cat", &Tensor::cat, py::keep_alive<0, 1>())
+        .def_static("gaussian_log_prob", &Tensor::gaussian_log_prob, 
+            py::arg("action"), py::arg("mean"), py::arg("log_std"),
+            py::keep_alive<0, 1>(), py::keep_alive<0, 2>(), py::keep_alive<0, 3>());
+    
+    // Module-level function for convenience
+    m.def("gaussian_log_prob", &Tensor::gaussian_log_prob, 
+        py::arg("action"), py::arg("mean"), py::arg("log_std"),
+        py::keep_alive<0, 1>(), py::keep_alive<0, 2>(), py::keep_alive<0, 3>());
 
     // Module-level Activations
     m.def("relu", &relu, py::keep_alive<0, 1>());
@@ -173,8 +184,8 @@ PYBIND11_MODULE(rigidRL, m) {
         .def("step", &Engine::step, "Run one simulation step. Returns False if Quit event received.")
         .def("update", &Engine::update, "Run one physics step (forces, collision, integration).")
         .def("render_bodies", &Engine::render_bodies, "Render all bodies + colliders.")
-        .def("add_collider", &Engine::add_collider, py::arg("x"), py::arg("y"), py::arg("width"), py::arg("height"), py::arg("rotation")=0.0f,
-             py::return_value_policy::reference, "Add a static box collider (ground, wall, platform).")
+        .def("add_collider", &Engine::add_collider, py::arg("x"), py::arg("y"), py::arg("width"), py::arg("height"), py::arg("rotation")=0.0f, py::arg("friction")=0.5f,
+             py::return_value_policy::reference, "Add a static box collider with optional friction (0-1).")
         .def("clear_colliders", &Engine::clear_colliders, "Remove all static colliders.")
         .def("clear_bodies", &Engine::clear_bodies, "Remove all dynamic bodies (for episode reset).")
         .def("get_renderer", &Engine::get_renderer, py::return_value_policy::reference);

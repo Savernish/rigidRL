@@ -18,10 +18,10 @@ def run():
     engine.set_gravity(0, -9.81)
     
     # Create boxes
-    box1 = rigid.Body(0, 6, 4, 1.0, 1.0)
-    box2 = rigid.Body(-2, 8, 1.5, 0.2, 0.8)
+    box1 = rigid.Body(-4, 6, 4, 1.0, 1.0)
+    box2 = rigid.Body(-6, 8, 1.5, 0.2, 0.8)
     box3 = rigid.Body(0, 8, 4, 1.2, 1.2)
-    box4 = rigid.Body(3, 8, 0.5, 1.2, 1.2)
+    box4 = rigid.Body(3, 10, 0.1, 1.2, 1.2)
     box5 = rigid.Body(5, 8, 0.1, 0.6, 1.2)
     engine.add_body(box1)
     engine.add_body(box2)
@@ -33,8 +33,8 @@ def run():
     engine.add_collider(0, -1, 25, 1, 0)
     
     # V-shaped valley (two angled platforms)
-    engine.add_collider(-4, 2.5, 5, 0.5, math.radians(-30))  # Left slope
-    engine.add_collider(0, 2.5, 5, 0.5, math.radians(30))    # Right slope
+    engine.add_collider(-4, 2.5, 5, 0.5, math.radians(-30), 0.51)  # Left slope
+    #engine.add_collider(0, 2.5, 5, 0.5, math.radians(30))    # Right slope
     
     # Peak (two angled platforms)
     engine.add_collider(5, 1.5, 4, 0.5, math.radians(40))    # Left side

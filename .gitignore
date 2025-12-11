@@ -11,6 +11,9 @@ diff_sim_core/extern/
 *.dll
 *.exe
 docs/
+task.md
+HANDOVER.md
+
 
 
 

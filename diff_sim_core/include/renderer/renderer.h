@@ -20,6 +20,9 @@ public:
     // Coordinates are in simulation space (meters), renderer handles scaling
     virtual void draw_box(float x, float y, float w, float h, float rotation, 
                           float r=1.0f, float g=1.0f, float b=1.0f) = 0;
+    
+    virtual void draw_box_filled(float x, float y, float w, float h, float rotation,
+                                  float r=1.0f, float g=1.0f, float b=1.0f) = 0;
 
     virtual void draw_line(float x1, float y1, float x2, float y2, float r=1.0f, float g=1.0f, float b=1.0f) = 0;
 

@@ -807,6 +807,61 @@ Tensor Tensor::matmul(const Tensor& other) {
 }
 
 
+// Gaussian log probability for policy gradients
+// log π(a|μ,σ) = -0.5 × ((a - μ)/σ)² - log(σ) - 0.5×log(2π)
+Tensor Tensor::gaussian_log_prob(const Tensor& action, const Tensor& mean, const Tensor& log_std) {
+    const float LOG_2PI = 1.8378770664093453f; // log(2π)
+    
+    // Forward pass: sum of log probs for each action dimension
+    Tensor result(1, 1, false);
+    float total = 0.0f;
+    int n = action.rows();
+    
+    for (int i = 0; i < n; i++) {
+        float a = action.data(i, 0);
+        float mu = mean.data(i, 0);
+        float log_s = log_std.data(i, 0);
+        float s = std::exp(log_s);
+        float diff = (a - mu) / s;
+        total += -0.5f * diff * diff - log_s - 0.5f * LOG_2PI;
+    }
+    result.data(0, 0) = total;
+    
+    if (mean.requires_grad || log_std.requires_grad) {
+        result.set_requires_grad(true);
+        result.grad.setZero();
+        result.children.push_back(const_cast<Tensor*>(&mean));
+        result.children.push_back(const_cast<Tensor*>(&log_std));
+        
+        // Store pointers for backward
+        Tensor* a_ptr = const_cast<Tensor*>(&action);
+        Tensor* m_ptr = const_cast<Tensor*>(&mean);
+        Tensor* ls_ptr = const_cast<Tensor*>(&log_std);
+        int num_dims = n;
+        
+        result.backward_fn = [a_ptr, m_ptr, ls_ptr, num_dims](Tensor& self) {
+            for (int i = 0; i < num_dims; i++) {
+                float a = a_ptr->data(i, 0);
+                float mu = m_ptr->data(i, 0);
+                float log_s = ls_ptr->data(i, 0);
+                float s = std::exp(log_s);
+                float diff = a - mu;
+                
+                // ∂/∂μ log π = (a - μ) / σ²
+                if (m_ptr->requires_grad) {
+                    m_ptr->grad(i, 0) += self.grad(0, 0) * diff / (s * s);
+                }
+                // ∂/∂log_std log π = ((a - μ)/σ)² - 1
+                if (ls_ptr->requires_grad) {
+                    float normalized_diff = diff / s;
+                    ls_ptr->grad(i, 0) += self.grad(0, 0) * (normalized_diff * normalized_diff - 1.0f);
+                }
+            }
+        };
+    }
+    return result;
+}
+
 // Accessors
 Eigen::MatrixXf Tensor::get_data() const { return data; }
 void Tensor::set_data(const Eigen::MatrixXf& d) { data = d; }

@@ -34,8 +34,9 @@ void Engine::add_body(Body* b) {
     bodies.push_back(b);
 }
 
-Body* Engine::add_collider(float x, float y, float width, float height, float rotation) {
+Body* Engine::add_collider(float x, float y, float width, float height, float rotation, float friction) {
     Body* c = Body::create_static(x, y, width, height, rotation);
+    c->friction = friction;
     colliders.push_back(c);
     return c;
 }
@@ -51,10 +52,8 @@ void Engine::clear_bodies() {
     // Clear contact manager first
     contact_manager.clear();
     
-    // Delete all dynamic bodies
-    for (Body* b : bodies) {
-        delete b;
-    }
+    // Just clear the vector - don't delete bodies
+    // Python owns the Body objects and will garbage collect them
     bodies.clear();
 }
 
@@ -1034,11 +1033,11 @@ void Engine::update() {
 // ============================================================================
 
 void Engine::render_bodies() {
-    // Render colliders (static geometry) in gray
+    // Render colliders (static geometry) in gray - filled
     for (Body* c : colliders) {
         for (const auto& shape : c->shapes) {
             if (shape.type == Shape::BOX) {
-                renderer->draw_box(c->get_x(), c->get_y(), 
+                renderer->draw_box_filled(c->get_x(), c->get_y(), 
                                    shape.width, shape.height, 
                                    c->get_rotation(),
                                    0.4f, 0.4f, 0.4f);  // Gray
@@ -1046,11 +1045,11 @@ void Engine::render_bodies() {
         }
     }
     
-    // Render dynamic bodies in default color
+    // Render dynamic bodies in default color - filled
     for (Body* b : bodies) {
         for (const auto& shape : b->shapes) {
             if (shape.type == Shape::BOX) {
-                renderer->draw_box(b->get_x(), b->get_y(), 
+                renderer->draw_box_filled(b->get_x(), b->get_y(), 
                                    shape.width, shape.height, 
                                    b->get_rotation());
             }

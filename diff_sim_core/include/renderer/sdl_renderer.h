@@ -22,6 +22,8 @@ public:
     bool process_events() override;
     void draw_box(float x, float y, float w, float h, float rotation,
                   float r, float g, float b) override;
+    void draw_box_filled(float x, float y, float w, float h, float rotation,
+                  float r, float g, float b) override;
     void draw_circle(float centerX, float centerY, float radius,
                   float r, float g, float b) override;
     void draw_line(float x1, float y1, float x2, float y2, 

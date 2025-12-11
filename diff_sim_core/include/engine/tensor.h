@@ -91,7 +91,8 @@ public:
     Tensor transpose();
     Tensor matmul(const Tensor& other);
     
-    
+    // Gaussian log probability for policy gradients
+    static Tensor gaussian_log_prob(const Tensor& action, const Tensor& mean, const Tensor& log_std);
 
 private:
    // The backend: Dynamic size, Float type
