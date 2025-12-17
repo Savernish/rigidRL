@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cstdint>
+#include <cstddef>
+#include <functional>
 #include <array>
 
 // Forward declaration
