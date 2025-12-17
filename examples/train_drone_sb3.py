@@ -103,19 +103,25 @@ def train(total_timesteps=100_000, save_path="drone_ppo"):
     print(f"Training PPO for {total_timesteps} timesteps...")
     print("=" * 50)
     
-    # Create vectorized training environment
-    train_env = make_drone_vec_env(num_envs=8)
+    # Use SB3's make_vec_env for proper wrapping
+    from stable_baselines3.common.env_util import make_vec_env as sb3_make_vec_env
     
-    # Create model
+    train_env = sb3_make_vec_env(
+        lambda: DroneEnv(render_mode=None),
+        n_envs=8
+    )
+    
+    # Create model with better hyperparameters
     model = PPO(
         "MlpPolicy",
         train_env,
         verbose=1,
-        learning_rate=3e-4,
+        learning_rate=1e-3,
         n_steps=2048,
         batch_size=64,
         n_epochs=10,
         gamma=0.99,
+        ent_coef=0.01,  # Encourage exploration
         tensorboard_log="./logs/"
     )
     
@@ -124,7 +130,7 @@ def train(total_timesteps=100_000, save_path="drone_ppo"):
     
     # Save
     model.save(save_path)
-    print(f"✓ Model saved to {save_path}.zip")
+    print(f"Model saved to {save_path}.zip")
     
     train_env.close()
     return model

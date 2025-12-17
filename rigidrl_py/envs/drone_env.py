@@ -151,20 +151,26 @@ class DroneEnv(RigidEnv):
         # Distance to target (main objective)
         dist = np.linalg.norm(pos - self.target)
         
-        # Velocity penalty (encourage smooth flight)
-        vel_penalty = 0.1 * np.linalg.norm(vel)
+        # Survival bonus - crucial for learning to stay aloft
+        reward = 0.5
         
-        # Angle penalty (encourage level flight)
-        angle_penalty = 0.5 * abs(angle)
+        # Distance reward (exponential for better gradient)
+        reward -= dist * 0.5
         
-        # Base reward (negative distance)
-        reward = -dist - vel_penalty - angle_penalty
+        # Height reward - encourage going up
+        reward += pos[1] * 0.2
+        
+        # Velocity penalty (smaller)
+        reward -= 0.05 * np.linalg.norm(vel)
+        
+        # Angle penalty (smaller, encourage level flight)
+        reward -= 0.2 * abs(angle)
         
         # Bonus for being close to target
         if dist < 0.5:
-            reward += 1.0
-        if dist < 0.2:
             reward += 2.0
+        if dist < 0.2:
+            reward += 5.0
             
         return float(reward)
         
