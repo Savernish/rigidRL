@@ -82,14 +82,8 @@ void Engine::ApplyGravity(Body* pBody, float subDt) {
 void Engine::Integrate(Body* pBody, float subDt) {
     if (pBody->is_static) return;
     
-    // Angular velocity damping - only for bodies WITHOUT motors
-    // Bodies with motors should naturally stabilize via thrust control
-    if (pBody->motors.empty()) {
-        float omega = pBody->ang_vel.Get(0, 0);
-        float dampedOmega = omega * 0.99f;
-        if (std::abs(dampedOmega) < 0.01f) dampedOmega = 0;
-        pBody->ang_vel = Tensor(std::vector<float>{dampedOmega}, true);
-    }
+    // No angular damping - angular momentum conserved in free fall
+    // Friction during collisions provides natural damping
     
     pBody->Step(subDt);
 }
@@ -379,6 +373,127 @@ bool Engine::DetectBoxBox(Body* pBodyA, const Shape& shapeA, Body* pBodyB, const
 }
 
 // ============================================================================
+// Circle Collision Detection
+// ============================================================================
+
+bool Engine::DetectCircleCircle(Body* pBodyA, const Shape& shapeA, Body* pBodyB, const Shape& shapeB,
+                                float& penDepth, float& nx, float& ny, float& cx, float& cy) {
+    // Get circle centers in world space
+    float ax = pBodyA->pos.Get(0, 0) + shapeA.offsetX;
+    float ay = pBodyA->pos.Get(1, 0) + shapeA.offsetY;
+    float bx = pBodyB->pos.Get(0, 0) + shapeB.offsetX;
+    float by = pBodyB->pos.Get(1, 0) + shapeB.offsetY;
+    
+    float radiusA = shapeA.width;  // For circles, width stores radius
+    float radiusB = shapeB.width;
+    
+    // Vector from B to A (so normal points in correct direction for separation)
+    float dx = ax - bx;
+    float dy = ay - by;
+    float distSq = dx * dx + dy * dy;
+    float radiusSum = radiusA + radiusB;
+    
+    // Check if circles overlap
+    if (distSq >= radiusSum * radiusSum) {
+        return false;  // No collision
+    }
+    
+    float dist = std::sqrt(distSq);
+    
+    if (dist > 0.0001f) {
+        // Normal from B to A (pushes A away from B)
+        nx = dx / dist;
+        ny = dy / dist;
+    } else {
+        // Circles at same position - push A upward
+        nx = 0.0f;
+        ny = 1.0f;
+        dist = 0.0f;
+    }
+    
+    penDepth = radiusSum - dist;
+    
+    // Contact point: midpoint between surfaces
+    cx = (ax - nx * radiusA + bx + nx * radiusB) / 2.0f;
+    cy = (ay - ny * radiusA + by + ny * radiusB) / 2.0f;
+    
+    return true;
+}
+
+bool Engine::DetectCircleBox(Body* pCircleBody, const Shape& circleShape, Body* pBoxBody, const Shape& boxShape,
+                             float& penDepth, float& nx, float& ny, float& cx, float& cy) {
+    // Get circle center in world space
+    float circleX = pCircleBody->pos.Get(0, 0) + circleShape.offsetX;
+    float circleY = pCircleBody->pos.Get(1, 0) + circleShape.offsetY;
+    float radius = circleShape.width;
+    
+    // Get box transform
+    float boxX = pBoxBody->pos.Get(0, 0) + boxShape.offsetX;
+    float boxY = pBoxBody->pos.Get(1, 0) + boxShape.offsetY;
+    float rotation = pBoxBody->rotation.Get(0, 0);
+    float hw = boxShape.width / 2.0f;
+    float hh = boxShape.height / 2.0f;
+    
+    float cosR = std::cos(rotation);
+    float sinR = std::sin(rotation);
+    
+    // Transform circle center to box's local space
+    float dx = circleX - boxX;
+    float dy = circleY - boxY;
+    float localX = cosR * dx + sinR * dy;
+    float localY = -sinR * dx + cosR * dy;
+    
+    // Find closest point on box to circle center (in local space)
+    float closestX = std::max(-hw, std::min(hw, localX));
+    float closestY = std::max(-hh, std::min(hh, localY));
+    
+    // Vector from closest point to circle center
+    float diffX = localX - closestX;
+    float diffY = localY - closestY;
+    float distSq = diffX * diffX + diffY * diffY;
+    
+    // Check if circle overlaps
+    if (distSq >= radius * radius) {
+        return false;  // No collision
+    }
+    
+    float dist = std::sqrt(distSq);
+    
+    // Calculate collision normal (in local space, then transform to world)
+    float localNx, localNy;
+    if (dist > 0.0001f) {
+        localNx = diffX / dist;
+        localNy = diffY / dist;
+    } else {
+        // Circle center inside box - find nearest edge
+        float penLeft = localX + hw;
+        float penRight = hw - localX;
+        float penBottom = localY + hh;
+        float penTop = hh - localY;
+        
+        float minPen = std::min({penLeft, penRight, penBottom, penTop});
+        if (minPen == penLeft) { localNx = -1; localNy = 0; }
+        else if (minPen == penRight) { localNx = 1; localNy = 0; }
+        else if (minPen == penBottom) { localNx = 0; localNy = -1; }
+        else { localNx = 0; localNy = 1; }
+        
+        dist = 0.0f;
+    }
+    
+    // Transform normal back to world space
+    nx = cosR * localNx - sinR * localNy;
+    ny = sinR * localNx + cosR * localNy;
+    
+    penDepth = radius - dist;
+    
+    // Contact point: closest point on box surface (in world space)
+    cx = boxX + cosR * closestX - sinR * closestY;
+    cy = boxY + sinR * closestX + cosR * closestY;
+    
+    return true;
+}
+
+// ============================================================================
 // Sequential Impulse Solver: Collision Detection with Manifolds
 // ============================================================================
 
@@ -652,7 +767,13 @@ void Engine::ApplyImpulse(Body* pBodyA, Body* pBodyB, float nx, float ny, float 
                   raCrossN * raCrossN * invInertiaA +
                   rbCrossN * rbCrossN * invInertiaB;
     
+    // Safety check to avoid division by zero
+    if (denom < 0.0001f) return;
+    
     float j = -(1.0f + e) * vRelN / denom;
+    
+    // Safety check for NaN/Inf
+    if (std::isnan(j) || std::isinf(j)) return;
     
     // Apply impulse
     if (!pBodyA->is_static) {
@@ -735,45 +856,75 @@ void Engine::ApplyImpulse(Body* pBodyA, Body* pBodyB, float nx, float ny, float 
 void Engine::ResolveCollision(Body* pBodyA, Body* pBodyB) {
     for (const Shape& shapeA : pBodyA->shapes) {
         for (const Shape& shapeB : pBodyB->shapes) {
+            float pen = 0, nx = 0, ny = 0, cx = 0, cy = 0;
+            bool collision = false;
+            
+            // Dispatch based on shape types
             if (shapeA.type == Shape::BOX && shapeB.type == Shape::BOX) {
-                float pen, nx, ny;
                 float contactsX[4], contactsY[4], contactsPen[4];
-                
                 int numContacts = DetectBoxBoxMulti(pBodyA, shapeA, pBodyB, shapeB, pen, nx, ny,
                                                     contactsX, contactsY, contactsPen);
-                
                 if (numContacts > 0) {
-                    // Position correction (Baumgarte stabilization)
-                    float slop = 0.01f;
-                    float baumgarte = 0.4f;  // Stronger correction with multi-point
-                    float correction = std::max(pen - slop, 0.0f) * baumgarte;
+                    collision = true;
+                    cx = contactsX[0];
+                    cy = contactsY[0];
                     
-                    if (!pBodyA->is_static && !pBodyB->is_static) {
-                        float totalMass = pBodyA->mass.Get(0, 0) + pBodyB->mass.Get(0, 0);
-                        float ratioA = pBodyB->mass.Get(0, 0) / totalMass;
-                        float ratioB = pBodyA->mass.Get(0, 0) / totalMass;
-                        
-                        float newAx = pBodyA->pos.Get(0, 0) + nx * correction * ratioA;
-                        float newAy = pBodyA->pos.Get(1, 0) + ny * correction * ratioA;
-                        pBodyA->pos = Tensor(std::vector<float>{newAx, newAy}, true);
-                        
-                        float newBx = pBodyB->pos.Get(0, 0) - nx * correction * ratioB;
-                        float newBy = pBodyB->pos.Get(1, 0) - ny * correction * ratioB;
-                        pBodyB->pos = Tensor(std::vector<float>{newBx, newBy}, true);
-                    } else if (!pBodyA->is_static) {
-                        float newAx = pBodyA->pos.Get(0, 0) + nx * correction;
-                        float newAy = pBodyA->pos.Get(1, 0) + ny * correction;
-                        pBodyA->pos = Tensor(std::vector<float>{newAx, newAy}, true);
-                    } else if (!pBodyB->is_static) {
-                        float newBx = pBodyB->pos.Get(0, 0) - nx * correction;
-                        float newBy = pBodyB->pos.Get(1, 0) - ny * correction;
-                        pBodyB->pos = Tensor(std::vector<float>{newBx, newBy}, true);
-                    }
-                    
-                    // Apply impulse at EACH contact point
+                    // Apply impulse at each contact point
                     for (int i = 0; i < numContacts; ++i) {
                         ApplyImpulse(pBodyA, pBodyB, nx, ny, contactsX[i], contactsY[i]);
                     }
+                }
+            }
+            else if (shapeA.type == Shape::CIRCLE && shapeB.type == Shape::CIRCLE) {
+                collision = DetectCircleCircle(pBodyA, shapeA, pBodyB, shapeB, pen, nx, ny, cx, cy);
+                if (collision) {
+                    ApplyImpulse(pBodyA, pBodyB, nx, ny, cx, cy);
+                }
+            }
+            else if (shapeA.type == Shape::CIRCLE && shapeB.type == Shape::BOX) {
+                collision = DetectCircleBox(pBodyA, shapeA, pBodyB, shapeB, pen, nx, ny, cx, cy);
+                if (collision) {
+                    ApplyImpulse(pBodyA, pBodyB, nx, ny, cx, cy);
+                }
+            }
+            else if (shapeA.type == Shape::BOX && shapeB.type == Shape::CIRCLE) {
+                // Swap order: DetectCircleBox expects circle first
+                collision = DetectCircleBox(pBodyB, shapeB, pBodyA, shapeA, pen, nx, ny, cx, cy);
+                if (collision) {
+                    // Normal points from circle to box, flip for consistent impulse
+                    nx = -nx;
+                    ny = -ny;
+                    ApplyImpulse(pBodyA, pBodyB, nx, ny, cx, cy);
+                }
+            }
+            // Note: Triangle collisions not yet implemented
+            
+            // Position correction (Baumgarte stabilization)
+            if (collision && pen > 0.001f) {
+                float slop = 0.01f;
+                float baumgarte = 0.4f;
+                float correction = std::max(pen - slop, 0.0f) * baumgarte;
+                
+                if (!pBodyA->is_static && !pBodyB->is_static) {
+                    float totalMass = pBodyA->mass.Get(0, 0) + pBodyB->mass.Get(0, 0);
+                    float ratioA = pBodyB->mass.Get(0, 0) / totalMass;
+                    float ratioB = pBodyA->mass.Get(0, 0) / totalMass;
+                    
+                    float newAx = pBodyA->pos.Get(0, 0) + nx * correction * ratioA;
+                    float newAy = pBodyA->pos.Get(1, 0) + ny * correction * ratioA;
+                    pBodyA->pos = Tensor(std::vector<float>{newAx, newAy}, true);
+                    
+                    float newBx = pBodyB->pos.Get(0, 0) - nx * correction * ratioB;
+                    float newBy = pBodyB->pos.Get(1, 0) - ny * correction * ratioB;
+                    pBodyB->pos = Tensor(std::vector<float>{newBx, newBy}, true);
+                } else if (!pBodyA->is_static) {
+                    float newAx = pBodyA->pos.Get(0, 0) + nx * correction;
+                    float newAy = pBodyA->pos.Get(1, 0) + ny * correction;
+                    pBodyA->pos = Tensor(std::vector<float>{newAx, newAy}, true);
+                } else if (!pBodyB->is_static) {
+                    float newBx = pBodyB->pos.Get(0, 0) - nx * correction;
+                    float newBy = pBodyB->pos.Get(1, 0) - ny * correction;
+                    pBodyB->pos = Tensor(std::vector<float>{newBx, newBy}, true);
                 }
             }
         }
@@ -1071,7 +1222,7 @@ void Engine::RenderBodies() {
         }
     }
     
-    // Render dynamic bodies - outline
+    // Render dynamic bodies - filled with color
     for (Body* pBody : m_Bodies) {
         float x = pBody->GetX();
         float y = pBody->GetY();
@@ -1079,18 +1230,31 @@ void Engine::RenderBodies() {
         
         for (const auto& shape : pBody->shapes) {
             if (shape.type == Shape::BOX) {
+                m_pRenderer->DrawBoxFilled(x + shape.offsetX, y + shape.offsetY, 
+                                   shape.width, shape.height, rot,
+                                   0.3f, 0.5f, 0.8f);  // Blue fill
                 m_pRenderer->DrawBox(x + shape.offsetX, y + shape.offsetY, 
-                                   shape.width, shape.height, rot);
+                                   shape.width, shape.height, rot,
+                                   1.0f, 1.0f, 1.0f);  // White outline
             } else if (shape.type == Shape::CIRCLE) {
                 float wx, wy;
                 transformPoint(shape.offsetX, shape.offsetY, x, y, rot, wx, wy);
-                m_pRenderer->DrawCircle(wx, wy, shape.width);
+                float radius = shape.width;
+                m_pRenderer->DrawCircleFilled(wx, wy, radius, 0.3f, 0.5f, 0.8f);  // Blue fill
+                m_pRenderer->DrawCircle(wx, wy, radius, 1.0f, 1.0f, 1.0f);  // White outline
+                // Rotation indicator line (white on top)
+                float lineStartX = wx - radius * std::cos(rot);
+                float lineStartY = wy - radius * std::sin(rot);
+                float lineEndX = wx + radius * std::cos(rot);
+                float lineEndY = wy + radius * std::sin(rot);
+                m_pRenderer->DrawLine(lineStartX, lineStartY, lineEndX, lineEndY, 1.0f, 1.0f, 1.0f);
             } else if (shape.type == Shape::TRIANGLE) {
                 float wx1, wy1, wx2, wy2, wx3, wy3;
                 transformPoint(shape.vertices[0], shape.vertices[1], x, y, rot, wx1, wy1);
                 transformPoint(shape.vertices[2], shape.vertices[3], x, y, rot, wx2, wy2);
                 transformPoint(shape.vertices[4], shape.vertices[5], x, y, rot, wx3, wy3);
-                m_pRenderer->DrawTriangle(wx1, wy1, wx2, wy2, wx3, wy3);
+                m_pRenderer->DrawTriangleFilled(wx1, wy1, wx2, wy2, wx3, wy3, 0.3f, 0.5f, 0.8f);  // Blue
+                m_pRenderer->DrawTriangle(wx1, wy1, wx2, wy2, wx3, wy3, 1.0f, 1.0f, 1.0f);  // White outline
             }
         }
     }

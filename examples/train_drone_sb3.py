@@ -38,8 +38,8 @@ def test_environment():
     print("Testing DroneEnv...")
     print("=" * 50)
     
-    # Create environment
-    env = DroneEnv(render_mode=None)
+    # Create environment with default config
+    env = DroneEnv.default()
     
     # Run env checker
     if HAS_SB3:
@@ -107,7 +107,7 @@ def train(total_timesteps=100_000, save_path="drone_ppo"):
     from stable_baselines3.common.env_util import make_vec_env as sb3_make_vec_env
     
     train_env = sb3_make_vec_env(
-        lambda: DroneEnv(render_mode=None),
+        lambda: DroneEnv.default(),
         n_envs=8
     )
     

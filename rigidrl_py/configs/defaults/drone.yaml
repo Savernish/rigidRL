@@ -1,0 +1,26 @@
+# Default Drone Environment Configuration
+
+drone:
+  mass: 1.0
+  width: 1.0
+  height: 0.2
+  motors:
+    - x: -0.4
+      y: 0.0
+      max_thrust: 10.0
+      mass: 0.05
+    - x: 0.4
+      y: 0.0
+      max_thrust: 10.0
+      mass: 0.05
+
+target: [0.0, 4.0]
+
+spawn_points:
+  - [0.0, 1.5]
+
+max_steps: 500
+
+window_width: 800
+window_height: 600
+scale: 50.0

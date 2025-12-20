@@ -149,6 +149,22 @@ PYBIND11_MODULE(rigidRL, m) {
              py::arg("x1"), py::arg("y1"), py::arg("x2"), py::arg("y2"), py::arg("x3"), py::arg("y3"),
              "Add a triangle shape defined by 3 local vertices.")
         .def("clear_shapes", &Body::ClearShapes, "Remove all shapes from the body.")
+        .def_static("Circle", &Body::Circle, 
+             py::arg("x"), py::arg("y"), py::arg("mass"), py::arg("radius"),
+             py::arg("friction")=0.3f, py::arg("restitution")=0.2f,
+             py::return_value_policy::take_ownership,
+             "Create a circle body.")
+        .def_static("Rect", &Body::Rect,
+             py::arg("x"), py::arg("y"), py::arg("mass"), py::arg("width"), py::arg("height"),
+             py::arg("friction")=0.3f, py::arg("restitution")=0.2f,
+             py::return_value_policy::take_ownership,
+             "Create a rectangle body.")
+        .def_static("Triangle", &Body::Triangle,
+             py::arg("x"), py::arg("y"), py::arg("mass"),
+             py::arg("x1"), py::arg("y1"), py::arg("x2"), py::arg("y2"), py::arg("x3"), py::arg("y3"),
+             py::arg("friction")=0.3f, py::arg("restitution")=0.2f,
+             py::return_value_policy::take_ownership,
+             "Create a triangle body. Vertices are relative to body center.")
         .def_property_readonly("motors", [](Body& b) { return b.motors; }, py::return_value_policy::reference_internal);
 
     py::class_<Motor>(m, "Motor")
@@ -200,7 +216,7 @@ PYBIND11_MODULE(rigidRL, m) {
         .def(py::init<int, int, float, float, int, bool>(), 
              py::arg("width")=800, py::arg("height")=600, py::arg("scale")=50.0f, 
              py::arg("dt")=0.016f, py::arg("substeps")=10, py::arg("headless")=false)
-        .def("add_body", &Engine::AddBody)
+        .def("add_body", &Engine::AddBody, py::keep_alive<1, 2>())
         .def("set_gravity", &Engine::SetGravity)
         .def("step", &Engine::Step, "Run one simulation step. Returns False if Quit event received.")
         .def("update", &Engine::Update, "Run one physics step (forces, collision, integration).")

@@ -95,11 +95,41 @@ public:
     float friction;     // Friction coefficient [0, 1]
     float restitution;  // Bounciness [0 = no bounce, 1 = full bounce]
 
-    // Constructor
+    // Constructor (creates a box shape by default)
     Body(float x, float y, float massVal, float width, float height);
     
     // Static body factory (for ground/walls)
     static Body* CreateStatic(float x, float y, float width, float height, float rotation = 0.0f);
+    
+    // Shape body factories - cleaner API: Body.Circle, Body.Rect, Body.Triangle
+    static Body* Circle(float x, float y, float mass, float radius, 
+                        float friction = 0.3f, float restitution = 0.2f) {
+        Body* pBody = new Body(x, y, mass, radius * 2, radius * 2);
+        pBody->shapes.clear();
+        pBody->shapes.push_back(Shape::CreateCircle(radius));
+        pBody->friction = friction;
+        pBody->restitution = restitution;
+        return pBody;
+    }
+    
+    static Body* Rect(float x, float y, float mass, float width, float height,
+                      float friction = 0.3f, float restitution = 0.2f) {
+        Body* pBody = new Body(x, y, mass, width, height);
+        pBody->friction = friction;
+        pBody->restitution = restitution;
+        return pBody;
+    }
+    
+    static Body* Triangle(float x, float y, float mass, 
+                          float x1, float y1, float x2, float y2, float x3, float y3,
+                          float friction = 0.3f, float restitution = 0.2f) {
+        Body* pBody = new Body(x, y, mass, 1.0f, 1.0f);
+        pBody->shapes.clear();
+        pBody->shapes.push_back(Shape::CreateTriangle(x1, y1, x2, y2, x3, y3));
+        pBody->friction = friction;
+        pBody->restitution = restitution;
+        return pBody;
+    }
     
     // Motor management
     void AddMotor(Motor* pMotor) {

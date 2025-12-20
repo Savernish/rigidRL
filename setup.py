@@ -56,7 +56,7 @@ class CMakeBuild(build_ext):
 
 setup(
     name='rigidRL',
-    version='0.3.0',
+    version='0.4.0',
     author='Savern',
     description='High-Performance Rigid Body Physics Engine for RL',
     # rigidrl_py is in the project root

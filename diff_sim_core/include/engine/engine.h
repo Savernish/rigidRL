@@ -80,6 +80,12 @@ private:
                           float& penDepth, float& nx, float& ny,
                           float* pContactsX, float* pContactsY, float* pContactsPen);
     void ApplyImpulse(Body* pBodyA, Body* pBodyB, float nx, float ny, float cx, float cy);
+    
+    // Shape-specific collision detection
+    bool DetectCircleCircle(Body* pBodyA, const Shape& shapeA, Body* pBodyB, const Shape& shapeB,
+                            float& penDepth, float& nx, float& ny, float& cx, float& cy);
+    bool DetectCircleBox(Body* pCircleBody, const Shape& circleShape, Body* pBoxBody, const Shape& boxShape,
+                         float& penDepth, float& nx, float& ny, float& cx, float& cy);
 };
 
 #endif // ENGINE_H
