@@ -86,6 +86,13 @@ private:
                             float& penDepth, float& nx, float& ny, float& cx, float& cy);
     bool DetectCircleBox(Body* pCircleBody, const Shape& circleShape, Body* pBoxBody, const Shape& boxShape,
                          float& penDepth, float& nx, float& ny, float& cx, float& cy);
+    bool DetectTriangleCircle(Body* pTriBody, const Shape& triShape, Body* pCircleBody, const Shape& circleShape,
+                              float& penDepth, float& nx, float& ny, float& cx, float& cy);
+    bool DetectTriangleBox(Body* pTriBody, const Shape& triShape, Body* pBoxBody, const Shape& boxShape,
+                           float& penDepth, float& nx, float& ny, float& cx, float& cy);
+    
+    // Helper: Get triangle world vertices
+    void GetTriangleWorldVertices(Body* pBody, const Shape& shape, float* outVerts);
 };
 
 #endif // ENGINE_H

@@ -494,6 +494,278 @@ bool Engine::DetectCircleBox(Body* pCircleBody, const Shape& circleShape, Body* 
 }
 
 // ============================================================================
+// Triangle Collision Detection
+// ============================================================================
+
+// Helper: Transform triangle vertices to world space
+void Engine::GetTriangleWorldVertices(Body* pBody, const Shape& shape, float* outVerts) {
+    float rot = pBody->rotation.Get(0, 0);
+    float cosR = std::cos(rot);
+    float sinR = std::sin(rot);
+    float bx = pBody->pos.Get(0, 0);
+    float by = pBody->pos.Get(1, 0);
+    
+    for (int i = 0; i < 3; i++) {
+        float lx = shape.vertices[i * 2];
+        float ly = shape.vertices[i * 2 + 1];
+        outVerts[i * 2]     = bx + cosR * lx - sinR * ly;
+        outVerts[i * 2 + 1] = by + sinR * lx + cosR * ly;
+    }
+}
+
+// Helper: Point to line segment distance (returns closest point)
+static float PointToSegmentDist(float px, float py, float ax, float ay, float bx, float by,
+                                 float& closestX, float& closestY) {
+    float dx = bx - ax;
+    float dy = by - ay;
+    float lenSq = dx * dx + dy * dy;
+    
+    if (lenSq < 1e-8f) {
+        closestX = ax;
+        closestY = ay;
+        float diffX = px - ax;
+        float diffY = py - ay;
+        return std::sqrt(diffX * diffX + diffY * diffY);
+    }
+    
+    float t = ((px - ax) * dx + (py - ay) * dy) / lenSq;
+    t = std::max(0.0f, std::min(1.0f, t));
+    
+    closestX = ax + t * dx;
+    closestY = ay + t * dy;
+    
+    float diffX = px - closestX;
+    float diffY = py - closestY;
+    return std::sqrt(diffX * diffX + diffY * diffY);
+}
+
+// Helper: Check if point is inside triangle using barycentric coords
+static bool PointInTriangle(float px, float py, float* verts) {
+    float x1 = verts[0], y1 = verts[1];
+    float x2 = verts[2], y2 = verts[3];
+    float x3 = verts[4], y3 = verts[5];
+    
+    float d1 = (px - x2) * (y1 - y2) - (x1 - x2) * (py - y2);
+    float d2 = (px - x3) * (y2 - y3) - (x2 - x3) * (py - y3);
+    float d3 = (px - x1) * (y3 - y1) - (x3 - x1) * (py - y1);
+    
+    bool hasNeg = (d1 < 0) || (d2 < 0) || (d3 < 0);
+    bool hasPos = (d1 > 0) || (d2 > 0) || (d3 > 0);
+    
+    return !(hasNeg && hasPos);
+}
+
+bool Engine::DetectTriangleCircle(Body* pTriBody, const Shape& triShape, Body* pCircleBody, const Shape& circleShape,
+                                   float& penDepth, float& nx, float& ny, float& cx, float& cy) {
+    // Get triangle world vertices
+    float triVerts[6];
+    GetTriangleWorldVertices(pTriBody, triShape, triVerts);
+    
+    // Get circle center
+    float circleX = pCircleBody->pos.Get(0, 0) + circleShape.offsetX;
+    float circleY = pCircleBody->pos.Get(1, 0) + circleShape.offsetY;
+    float radius = circleShape.width;
+    
+    // Check if circle center is inside triangle
+    if (PointInTriangle(circleX, circleY, triVerts)) {
+        // Find closest edge
+        float minDist = std::numeric_limits<float>::max();
+        int closestEdge = 0;
+        float closestPx = 0, closestPy = 0;
+        
+        for (int i = 0; i < 3; i++) {
+            int j = (i + 1) % 3;
+            float ax = triVerts[i * 2], ay = triVerts[i * 2 + 1];
+            float bx = triVerts[j * 2], by = triVerts[j * 2 + 1];
+            
+            float cpx, cpy;
+            float dist = PointToSegmentDist(circleX, circleY, ax, ay, bx, by, cpx, cpy);
+            if (dist < minDist) {
+                minDist = dist;
+                closestEdge = i;
+                closestPx = cpx;
+                closestPy = cpy;
+            }
+        }
+        
+        // Normal points from triangle to circle (outward)
+        float edgeNx = circleX - closestPx;
+        float edgeNy = circleY - closestPy;
+        float len = std::sqrt(edgeNx * edgeNx + edgeNy * edgeNy);
+        if (len > 1e-6f) {
+            nx = edgeNx / len;
+            ny = edgeNy / len;
+        } else {
+            // Default normal (up)
+            nx = 0; ny = 1;
+        }
+        
+        penDepth = radius + minDist;
+        cx = closestPx;
+        cy = closestPy;
+        return true;
+    }
+    
+    // Circle center outside triangle - check edges
+    float minDist = std::numeric_limits<float>::max();
+    float closestPx = 0, closestPy = 0;
+    
+    for (int i = 0; i < 3; i++) {
+        int j = (i + 1) % 3;
+        float ax = triVerts[i * 2], ay = triVerts[i * 2 + 1];
+        float bx = triVerts[j * 2], by = triVerts[j * 2 + 1];
+        
+        float cpx, cpy;
+        float dist = PointToSegmentDist(circleX, circleY, ax, ay, bx, by, cpx, cpy);
+        if (dist < minDist) {
+            minDist = dist;
+            closestPx = cpx;
+            closestPy = cpy;
+        }
+    }
+    
+    if (minDist > radius) return false;  // No collision
+    
+    // Normal from closest point to circle center
+    float diffX = circleX - closestPx;
+    float diffY = circleY - closestPy;
+    float len = std::sqrt(diffX * diffX + diffY * diffY);
+    
+    if (len > 1e-6f) {
+        nx = diffX / len;
+        ny = diffY / len;
+    } else {
+        nx = 0; ny = 1;
+    }
+    
+    penDepth = radius - minDist;
+    cx = closestPx;
+    cy = closestPy;
+    return true;
+}
+
+bool Engine::DetectTriangleBox(Body* pTriBody, const Shape& triShape, Body* pBoxBody, const Shape& boxShape,
+                                float& penDepth, float& nx, float& ny, float& cx, float& cy) {
+    // Get triangle world vertices
+    float triVerts[6];
+    GetTriangleWorldVertices(pTriBody, triShape, triVerts);
+    
+    // Get box world vertices
+    float boxRot = pBoxBody->rotation.Get(0, 0);
+    float cosR = std::cos(boxRot), sinR = std::sin(boxRot);
+    float bx = pBoxBody->pos.Get(0, 0) + boxShape.offsetX;
+    float by = pBoxBody->pos.Get(1, 0) + boxShape.offsetY;
+    float hw = boxShape.width / 2.0f, hh = boxShape.height / 2.0f;
+    
+    float boxVerts[8];
+    float localCorners[4][2] = {{-hw, -hh}, {hw, -hh}, {hw, hh}, {-hw, hh}};
+    for (int i = 0; i < 4; i++) {
+        boxVerts[i * 2]     = bx + cosR * localCorners[i][0] - sinR * localCorners[i][1];
+        boxVerts[i * 2 + 1] = by + sinR * localCorners[i][0] + cosR * localCorners[i][1];
+    }
+    
+    // SAT: Test all potential separating axes
+    // Triangle normals (3 edges)
+    // Box normals (2 unique due to symmetry, but we test all 4 edges for robustness)
+    
+    float axes[7][2];
+    int numAxes = 0;
+    
+    // Triangle edge normals
+    for (int i = 0; i < 3; i++) {
+        int j = (i + 1) % 3;
+        float ex = triVerts[j * 2] - triVerts[i * 2];
+        float ey = triVerts[j * 2 + 1] - triVerts[i * 2 + 1];
+        float len = std::sqrt(ex * ex + ey * ey);
+        if (len > 1e-6f) {
+            axes[numAxes][0] = -ey / len;  // Perpendicular
+            axes[numAxes][1] = ex / len;
+            numAxes++;
+        }
+    }
+    
+    // Box edge normals (transformed)
+    axes[numAxes][0] = cosR;  axes[numAxes][1] = sinR;   numAxes++;
+    axes[numAxes][0] = -sinR; axes[numAxes][1] = cosR;   numAxes++;
+    
+    float minPen = std::numeric_limits<float>::max();
+    float bestNx = 0, bestNy = 0;
+    
+    for (int a = 0; a < numAxes; a++) {
+        float ax = axes[a][0], ay = axes[a][1];
+        
+        // Project triangle
+        float triMin = std::numeric_limits<float>::max();
+        float triMax = std::numeric_limits<float>::lowest();
+        for (int i = 0; i < 3; i++) {
+            float proj = triVerts[i * 2] * ax + triVerts[i * 2 + 1] * ay;
+            triMin = std::min(triMin, proj);
+            triMax = std::max(triMax, proj);
+        }
+        
+        // Project box
+        float boxMin = std::numeric_limits<float>::max();
+        float boxMax = std::numeric_limits<float>::lowest();
+        for (int i = 0; i < 4; i++) {
+            float proj = boxVerts[i * 2] * ax + boxVerts[i * 2 + 1] * ay;
+            boxMin = std::min(boxMin, proj);
+            boxMax = std::max(boxMax, proj);
+        }
+        
+        // Check overlap
+        float overlap1 = triMax - boxMin;
+        float overlap2 = boxMax - triMin;
+        
+        if (overlap1 < 0 || overlap2 < 0) return false;  // Separating axis found
+        
+        float pen = std::min(overlap1, overlap2);
+        if (pen < minPen) {
+            minPen = pen;
+            // Determine normal direction (from BOX to TRIANGLE for proper separation)
+            float triCenter = (triMin + triMax) / 2.0f;
+            float boxCenter = (boxMin + boxMax) / 2.0f;
+            if (triCenter > boxCenter) {
+                // Triangle is "ahead" on this axis, normal points towards triangle
+                bestNx = ax;
+                bestNy = ay;
+            } else {
+                // Triangle is "behind" on this axis
+                bestNx = -ax;
+                bestNy = -ay;
+            }
+        }
+    }
+    
+    // Collision detected
+    penDepth = minPen;
+    nx = bestNx;
+    ny = bestNy;
+    
+    // Contact point: find triangle vertex with deepest penetration into box
+    // This is the vertex that's furthest in the -normal direction relative to box
+    float boxCx = bx;
+    float boxCy = by;
+    
+    float bestDot = std::numeric_limits<float>::max();
+    cx = triVerts[0];
+    cy = triVerts[1];
+    
+    for (int i = 0; i < 3; i++) {
+        // Project vertex onto normal axis relative to box center
+        float vx = triVerts[i * 2];
+        float vy = triVerts[i * 2 + 1];
+        float dot = (vx - boxCx) * nx + (vy - boxCy) * ny;
+        if (dot < bestDot) {
+            bestDot = dot;
+            cx = vx;
+            cy = vy;
+        }
+    }
+    
+    return true;
+}
+
+// ============================================================================
 // Sequential Impulse Solver: Collision Detection with Manifolds
 // ============================================================================
 
@@ -897,7 +1169,40 @@ void Engine::ResolveCollision(Body* pBodyA, Body* pBodyB) {
                     ApplyImpulse(pBodyA, pBodyB, nx, ny, cx, cy);
                 }
             }
-            // Note: Triangle collisions not yet implemented
+            // Triangle vs Circle
+            else if (shapeA.type == Shape::TRIANGLE && shapeB.type == Shape::CIRCLE) {
+                collision = DetectTriangleCircle(pBodyA, shapeA, pBodyB, shapeB, pen, nx, ny, cx, cy);
+                if (collision) {
+                    // DetectTriangleCircle returns normal from triangle TO circle
+                    // For ApplyImpulse, normal should point from B to A (circle to triangle)
+                    // So flip it
+                    nx = -nx;
+                    ny = -ny;
+                    ApplyImpulse(pBodyA, pBodyB, nx, ny, cx, cy);
+                }
+            }
+            else if (shapeA.type == Shape::CIRCLE && shapeB.type == Shape::TRIANGLE) {
+                collision = DetectTriangleCircle(pBodyB, shapeB, pBodyA, shapeA, pen, nx, ny, cx, cy);
+                if (collision) {
+                    // Normal is from triangle (B) to circle (A), which is what we need
+                    ApplyImpulse(pBodyA, pBodyB, nx, ny, cx, cy);
+                }
+            }
+            // Triangle vs Box
+            else if (shapeA.type == Shape::TRIANGLE && shapeB.type == Shape::BOX) {
+                collision = DetectTriangleBox(pBodyA, shapeA, pBodyB, shapeB, pen, nx, ny, cx, cy);
+                if (collision) {
+                    ApplyImpulse(pBodyA, pBodyB, nx, ny, cx, cy);
+                }
+            }
+            else if (shapeA.type == Shape::BOX && shapeB.type == Shape::TRIANGLE) {
+                collision = DetectTriangleBox(pBodyB, shapeB, pBodyA, shapeA, pen, nx, ny, cx, cy);
+                if (collision) {
+                    nx = -nx;
+                    ny = -ny;
+                    ApplyImpulse(pBodyA, pBodyB, nx, ny, cx, cy);
+                }
+            }
             
             // Position correction (Baumgarte stabilization)
             if (collision && pen > 0.001f) {

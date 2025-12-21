@@ -105,7 +105,7 @@ class DroneEnv(RigidEnv):
         self.engine.set_gravity(0, -9.81)
         
         # Ground plane
-        self.engine.add_collider(0, -1, 20, 1, 0)
+        self.engine.Collider(0, -1, 20, 1, 0)
         
         # Randomly select spawn point
         spawn_idx = np.random.randint(0, len(self.spawn_points))

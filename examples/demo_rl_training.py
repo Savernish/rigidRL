@@ -38,8 +38,8 @@ except ImportError:
 
 
 # === Configuration ===
-TRAIN_TIMESTEPS = 400_000
-NUM_ENVS = 4
+TRAIN_TIMESTEPS = 999_999
+NUM_ENVS = 8
 
 # 5 spawn points for TRAINING
 TRAIN_SPAWN_POINTS = [
@@ -48,10 +48,12 @@ TRAIN_SPAWN_POINTS = [
     (2.0, 1.5),    # Right
     (0.0, 2.5),    # Higher
     (1.0, 1.0),    # Right-low
+    (3.0, 0.0),    # Left-low
+    (5.0, 5.0)     # Top-right
 ]
 
 # 6th spawn point for TESTING (never seen during training!)
-TEST_SPAWN_POINT = (-1.5, 2.0)
+TEST_SPAWN_POINT = (-3.0, 2.0)
 
 # Shared drone config
 DRONE = DroneConfig(
@@ -141,7 +143,7 @@ def visualize(model):
     env = DroneEnv(config=TEST_CONFIG, render_mode="human")
     
     # Run episodes
-    num_episodes = 3
+    num_episodes = 5
     for episode in range(num_episodes):
         print(f"\nEpisode {episode + 1}/{num_episodes}")
         

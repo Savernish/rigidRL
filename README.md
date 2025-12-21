@@ -88,7 +88,7 @@ engine = rigid.Engine(800, 600, 50.0, 0.016, 20)
 engine.set_gravity(0, -9.81)
 
 # Add ground collider
-engine.add_collider(0, -1, 20, 1, 0)
+engine.Collider(0, -1, 20, 1, 0)
 
 # Create body with motors
 drone = rigid.Body(0, 2, 1.0, 1.0, 0.2)
@@ -137,7 +137,7 @@ python examples/train_drone_sb3.py --demo  # visualize trained policy
 |--------|-------------|
 | `Engine(w, h, scale, dt, substeps, headless=False)` | Create engine |
 | `add_body(body)` | Add dynamic body |
-| `add_collider(x, y, w, h, rot, friction=0.5)` | Add static collider |
+| `Collider(x, y, w, h, rot, friction=0.5)` | Add static collider |
 | `set_gravity(x, y)` | Set gravity vector |
 | `step()` | Run one frame (physics + render) |
 | `update()` | Run physics only |

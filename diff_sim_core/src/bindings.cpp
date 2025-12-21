@@ -221,7 +221,7 @@ PYBIND11_MODULE(rigidRL, m) {
         .def("step", &Engine::Step, "Run one simulation step. Returns False if Quit event received.")
         .def("update", &Engine::Update, "Run one physics step (forces, collision, integration).")
         .def("render_bodies", &Engine::RenderBodies, "Render all bodies + colliders.")
-        .def("add_collider", &Engine::AddCollider, py::arg("x"), py::arg("y"), py::arg("width"), py::arg("height"), py::arg("rotation")=0.0f, py::arg("friction")=0.5f,
+        .def("Collider", &Engine::AddCollider, py::arg("x"), py::arg("y"), py::arg("width"), py::arg("height"), py::arg("rotation")=0.0f, py::arg("friction")=0.5f,
              py::return_value_policy::reference, "Add a static box collider with optional friction (0-1).")
         .def("clear_colliders", &Engine::ClearColliders, "Remove all static colliders.")
         .def("clear_bodies", &Engine::ClearBodies, "Remove all dynamic bodies (for episode reset).")
