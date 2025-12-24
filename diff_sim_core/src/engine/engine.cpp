@@ -765,6 +765,117 @@ bool Engine::DetectTriangleBox(Body* pTriBody, const Shape& triShape, Body* pBox
     return true;
 }
 
+bool Engine::DetectTriangleTriangle(Body* pBodyA, const Shape& shapeA, Body* pBodyB, const Shape& shapeB,
+                                     float& penDepth, float& nx, float& ny, float& cx, float& cy) {
+    // Get world vertices for both triangles
+    float vertsA[6], vertsB[6];
+    GetTriangleWorldVertices(pBodyA, shapeA, vertsA);
+    GetTriangleWorldVertices(pBodyB, shapeB, vertsB);
+    
+    // SAT: Test 6 edge normals (3 from each triangle)
+    float axes[6][2];
+    int numAxes = 0;
+    
+    // Triangle A edge normals
+    for (int i = 0; i < 3; i++) {
+        int j = (i + 1) % 3;
+        float ex = vertsA[j * 2] - vertsA[i * 2];
+        float ey = vertsA[j * 2 + 1] - vertsA[i * 2 + 1];
+        float len = std::sqrt(ex * ex + ey * ey);
+        if (len > 1e-6f) {
+            axes[numAxes][0] = -ey / len;
+            axes[numAxes][1] = ex / len;
+            numAxes++;
+        }
+    }
+    
+    // Triangle B edge normals
+    for (int i = 0; i < 3; i++) {
+        int j = (i + 1) % 3;
+        float ex = vertsB[j * 2] - vertsB[i * 2];
+        float ey = vertsB[j * 2 + 1] - vertsB[i * 2 + 1];
+        float len = std::sqrt(ex * ex + ey * ey);
+        if (len > 1e-6f) {
+            axes[numAxes][0] = -ey / len;
+            axes[numAxes][1] = ex / len;
+            numAxes++;
+        }
+    }
+    
+    float minPen = std::numeric_limits<float>::max();
+    float bestNx = 0, bestNy = 0;
+    
+    for (int a = 0; a < numAxes; a++) {
+        float ax = axes[a][0], ay = axes[a][1];
+        
+        // Project triangle A
+        float minA = std::numeric_limits<float>::max();
+        float maxA = std::numeric_limits<float>::lowest();
+        for (int i = 0; i < 3; i++) {
+            float proj = vertsA[i * 2] * ax + vertsA[i * 2 + 1] * ay;
+            minA = std::min(minA, proj);
+            maxA = std::max(maxA, proj);
+        }
+        
+        // Project triangle B
+        float minB = std::numeric_limits<float>::max();
+        float maxB = std::numeric_limits<float>::lowest();
+        for (int i = 0; i < 3; i++) {
+            float proj = vertsB[i * 2] * ax + vertsB[i * 2 + 1] * ay;
+            minB = std::min(minB, proj);
+            maxB = std::max(maxB, proj);
+        }
+        
+        // Check overlap
+        float overlap1 = maxA - minB;
+        float overlap2 = maxB - minA;
+        
+        if (overlap1 < 0 || overlap2 < 0) return false;  // Separating axis
+        
+        float pen = std::min(overlap1, overlap2);
+        if (pen < minPen) {
+            minPen = pen;
+            // Normal should point from B to A for ApplyImpulse convention
+            float centerA = (minA + maxA) / 2.0f;
+            float centerB = (minB + maxB) / 2.0f;
+            if (centerA > centerB) {
+                // A is ahead of B, normal points toward A (positive direction)
+                bestNx = ax;
+                bestNy = ay;
+            } else {
+                // B is ahead of A, normal points toward A (negative direction)
+                bestNx = -ax;
+                bestNy = -ay;
+            }
+        }
+    }
+    
+    penDepth = minPen;
+    nx = bestNx;
+    ny = bestNy;
+    
+    // Contact point: deepest vertex of A into B
+    float centBx = (vertsB[0] + vertsB[2] + vertsB[4]) / 3.0f;
+    float centBy = (vertsB[1] + vertsB[3] + vertsB[5]) / 3.0f;
+    
+    float bestDot = std::numeric_limits<float>::max();
+    cx = vertsA[0];
+    cy = vertsA[1];
+    
+    for (int i = 0; i < 3; i++) {
+        float vx = vertsA[i * 2];
+        float vy = vertsA[i * 2 + 1];
+        float dot = (vx - centBx) * nx + (vy - centBy) * ny;
+        if (dot < bestDot) {
+            bestDot = dot;
+            cx = vx;
+            cy = vy;
+        }
+    }
+    
+    return true;
+}
+
 // ============================================================================
 // Sequential Impulse Solver: Collision Detection with Manifolds
 // ============================================================================
@@ -1200,6 +1311,13 @@ void Engine::ResolveCollision(Body* pBodyA, Body* pBodyB) {
                 if (collision) {
                     nx = -nx;
                     ny = -ny;
+                    ApplyImpulse(pBodyA, pBodyB, nx, ny, cx, cy);
+                }
+            }
+            // Triangle vs Triangle
+            else if (shapeA.type == Shape::TRIANGLE && shapeB.type == Shape::TRIANGLE) {
+                collision = DetectTriangleTriangle(pBodyA, shapeA, pBodyB, shapeB, pen, nx, ny, cx, cy);
+                if (collision) {
                     ApplyImpulse(pBodyA, pBodyB, nx, ny, cx, cy);
                 }
             }

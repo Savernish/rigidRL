@@ -90,6 +90,8 @@ private:
                               float& penDepth, float& nx, float& ny, float& cx, float& cy);
     bool DetectTriangleBox(Body* pTriBody, const Shape& triShape, Body* pBoxBody, const Shape& boxShape,
                            float& penDepth, float& nx, float& ny, float& cx, float& cy);
+    bool DetectTriangleTriangle(Body* pBodyA, const Shape& shapeA, Body* pBodyB, const Shape& shapeB,
+                                float& penDepth, float& nx, float& ny, float& cx, float& cy);
     
     // Helper: Get triangle world vertices
     void GetTriangleWorldVertices(Body* pBody, const Shape& shape, float* outVerts);
